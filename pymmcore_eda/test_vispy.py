@@ -3,12 +3,14 @@ from pymmcore_plus import CMMCorePlus
 from useq import MDASequence
 import sys
 from qtpy import QtWidgets, QtCore
-
+import os
 import tifffile
 from pymmcore_widgets import MDAWidget
 import numpy as np
 import copy
-
+from pathlib import Path
+from event_bus import EventBus
+from datastore import DataStore
 
 app.use_app("pyqt6")
 
@@ -21,15 +23,15 @@ mmlog.level('TRACE')
 DIMENSIONS = ["c", "z", "t", "p", "g"]
 
 
+
 class Canvas(QtWidgets.QWidget):
     """A canvas to follow MDA acquisitions"""
     _slider_settings = QtCore.Signal(dict)
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, event_bus, *args, **kwargs):
         super().__init__()
 
         self._clim = 'auto'
-
         self.array = None
         self.display_index = {dim: 0 for dim in DIMENSIONS}
 
@@ -37,12 +39,11 @@ class Canvas(QtWidgets.QWidget):
         self.construct_canvas()
         self.layout().addWidget(self._canvas.native)
         self._create_sliders()
-        self.save_button = QtWidgets.QPushButton("Save")
-        self.layout().addWidget(self.save_button)
-        self.save_button.clicked.connect(self.save_array)
 
-        mmcore.mda.events.frameReady.connect(self.new_frame)
-        mmcore.mda.events.sequenceStarted.connect(self.on_sequence_start)
+        self.event_bus = event_bus
+        self.event_bus.sequence_started.connect(self.on_sequence_start)
+        self.event_bus.frame_ready.connect(self.on_frame_ready)
+
 
     def construct_canvas(self):
         self._clims = "auto"
@@ -55,9 +56,12 @@ class Canvas(QtWidgets.QWidget):
         self.image : scene.visuals.Image / None = None
         self.image2 : scene.visuals.Image / None = None
 
-    def on_sequence_start(self, sequence: MDASequence):
-        self.array = self._array_for_sequence(sequence)
-        self.handle_sliders(self.array)
+    def on_sequence_start(self, sequence: MDASequence, datastore: DataStore):
+        self.width = mmcore.getImageWidth()
+        self.height = mmcore.getImageHeight()
+        self.sequence = sequence
+        self.array = datastore
+        self.handle_sliders(sequence)
         self.handle_channels(sequence, self.array)
 
     def handle_channels(self, sequence: MDASequence, array: np.ndarray):
@@ -71,12 +75,12 @@ class Canvas(QtWidgets.QWidget):
             image.opacity = 0.5
             self.images.append(image)
 
-    def handle_sliders(self, array: np.ndarray):
+    def handle_sliders(self, sequence: MDASequence):
         for dim in DIMENSIONS[:3]:
-            if array.shape[DIMENSIONS.index(dim) + 2] > 1:
+            if sequence.sizes[dim] > 1:
                 self._slider_settings.emit({"index": dim,
                                             "show": True,
-                                            "max": array.shape[DIMENSIONS.index(dim) + 2] - 1})
+                                            "max": sequence.sizes[dim] - 1})
             else:
                 self._slider_settings.emit({"index": dim,
                                             "show": False,
@@ -92,33 +96,32 @@ class Canvas(QtWidgets.QWidget):
             slider.hide()
             self.sliders.append(slider)
 
-    def _array_for_sequence(self, sequence: MDASequence):
-        "Construct a numpy array to hold the data for the sequence"
-        exp_shape = sequence.sizes
-        dt = mmcore.getImageBitDepth()
-        dt = np.uint16 if dt == 16 else print("WARNING: bit depth not supported")
-        width = mmcore.getImageWidth()
-        height = mmcore.getImageHeight()
-        return np.zeros([width,
-                        height,
-                        max(exp_shape['c'], 1),
-                        max(exp_shape['z'], 1),
-                        max(exp_shape['t'], 1)]).astype(dt)
+    # def _array_for_sequence(self, sequence: MDASequence):
+    #     "Construct a numpy array to hold the data for the sequence"
+    #     exp_shape = sequence.sizes
+    #     dt = mmcore.getImageBitDepth()
+    #     dt = np.uint16 if dt == 16 else print("WARNING: bit depth not supported")
+    #     width = mmcore.getImageWidth()
+    #     height = mmcore.getImageHeight()
+    #     array =
+    #     return np.zeros([width,
+    #                     height,
+    #                     max(exp_shape['c'], 1),
+    #                     max(exp_shape['z'], 1),
+    #                     max(exp_shape['t'], 1)]).astype(dt)
 
     def on_slider_change(self, value, index):
         self.display_index[index] = value
-        for c in range(self.array.shape[2]):
-            self.display_image(self.array[:, :,
-                                        c,
-                                        self.display_index['z'],
-                                        self.display_index['t']],
-                              c)
+        for c in range(self.sequence.sizes['c']):
+            frame = self.array.get_frame(self.width, self.height,
+                                                    [c,
+                                                     self.display_index['z'],
+                                                     self.display_index['t']])
+            self.display_image(frame, c)
 
-    def new_frame(self, img: np.ndarray, event):
-        if sum(event.index.values()) == 0:
-            self.view.camera.set_range(margin=0)
+    def on_frame_ready(self, event):
         indices = self.complement_indices(event)
-        self.array[:, :, indices["c"], indices["z"], indices["t"]] = img
+        img = self.array.get_frame(512, 512, [indices['c'], indices['z'], indices['t']])
         self.display_image(img, indices["c"])
         self._set_sliders(indices)
 
@@ -142,13 +145,6 @@ class Canvas(QtWidgets.QWidget):
                 indeces[i] = 0
         return indeces
 
-    def save_array(self):
-        fname = QtWidgets.QFileDialog.getSaveFileName(self, 'Open file',
-        'c:\\',"TIF files (*.tif)")
-        tifffile.imwrite(fname[0],
-                         np.moveaxis(self.array, [0, 1, 2, 3, 4], [3, 4, 2, 1, 0]),
-                         imagej=True)
-
 
 class IndexSlider(QtWidgets.QSlider):
     """Slider that gets an index when created and transmits it when value changes."""
@@ -170,9 +166,55 @@ class IndexSlider(QtWidgets.QSlider):
             self.hide()
         self.setRange(0, settings['max'])
 
+
+class Saver(QtWidgets.QWidget):
+    """Save the array"""
+    def __init__(self, event_bus: EventBus, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.settings = QtCore.QSettings("MM", self.__class__.__name__)
+
+        self.layout = QtWidgets.QHBoxLayout(self)
+        self.save_button = QtWidgets.QPushButton("Save")
+        self.save_button.clicked.connect(self.save_array)
+        self.layout.addWidget(self.save_button)
+
+        self.save_location = self.settings.value("save_location", "C:\\")
+        self.event_bus = event_bus
+        self.event_bus.sequence_started.connect(self.on_sequence_started)
+
+    def on_sequence_started(self, sequence: MDASequence, datastore: DataStore):
+        self.datastore = datastore
+        self.width = mmcore.getImageWidth()
+        self.height = mmcore.getImageHeight()
+        self.sequence = sequence
+
+    def save_array(self):
+        fname = Path(QtWidgets.QFileDialog.getSaveFileName(self,
+                                                           'Open file',self.save_location)[0])
+        os.makedirs(fname)
+        array = self.datastore.reshape([self.width, self.height, max(self.sequence.sizes['c'], 1),
+                                                                 max(self.sequence.sizes['z'], 1),
+                                                                 max(self.sequence.sizes['t'], 1)],
+                                       order = "F")
+        tifffile.imwrite(fname/'images.ome.tif',
+                         np.moveaxis(array, [0, 1, 2, 3, 4], [4, 3, 2, 1, 0]),
+                         imagej=True)
+        mmcore.saveSystemState(str(fname/'mm_data.txt'))
+        self.save_location = str(fname.parent)
+
+    def closeEvent(self, e):
+        self.settings.setValue("save_location", self.save_location)
+        super().closeEvent(e)
+
+
+
 if __name__ == "__main__":
     gui = QtWidgets.QApplication(sys.argv)
-    w =Canvas()
+    event_bus = EventBus()
+
+    saver = Saver(event_bus)
+    saver.show()
+    w = Canvas(event_bus)
     w.show()
     # mda = MDAWidget(include_run_button=True)
     # mda.show()
