@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "pymmcore-eda"
+version = "0.1.0"
+description = ""
+authors = ["Willi Stepp <willi.stepp@epfl.ch>"]
+readme = "README.md"
+packages = [{include = "pymmcore_eda"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+pymmcore-plus = { path = "../pymmcore-plus/", develop = true }
+
+[tool.poetry.group.test.dependencies]
+pytest = "^6.0.0"
+pytest-mock = "*"
+pytest-qt = "*"
+pyqt5 = "^5.15.9"
+qtpy = "^2.3.1"
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.7.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
