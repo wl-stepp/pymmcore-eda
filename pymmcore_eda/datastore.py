@@ -4,36 +4,33 @@ from pymmcore_plus import CMMCorePlus
 import numpy as np
 from useq import MDASequence, MDAEvent
 import copy
+from psygnal import Signal
 
 mmcore = CMMCorePlus.instance()
 mmcore.loadSystemConfiguration()
 
 DIMENSIONS = ["c", "z", "t", "p", "g"]
 
+
 class DataStore(BufferedArray):
 
-    def __new__(self, event_bus, sequence: MDASequence, *args, **kwargs):
-        exp_shape = sequence.sizes
-        dt_n = mmcore.getImageBitDepth()
-        dt = np.uint16 if dt_n == 16 else print("WARNING: bit depth not supported")
-        width = mmcore.getImageWidth()
-        height = mmcore.getImageHeight()
-        n_ints = width * height * max(exp_shape['c'], 1) * max(exp_shape['z'], 1) * max(exp_shape['t'], 1)
+    frame_ready = Signal(int, tuple, MDAEvent)
 
-        return super().__new__(DataStore, capacity=n_ints*dt_n//8, dtype=dt, create=True)
+    def __new__(self, create: bool = True, *args, **kwargs):
+        return super().__new__(DataStore, capacity=int(10E8), dtype=np.uint16, create=create, *args, **kwargs)
 
-    def __init__(self, event_bus, sequence):
+    def __init__(self, *args, **kwargs):
         super().__init__()
-        self.event_bus = event_bus
         mmcore.mda.events.frameReady.connect(self.new_frame)
 
     def new_frame(self, img: np.ndarray, event: MDAEvent):
+        idx = self._write_idx
         self.put(img)
+        self.frame_ready.emit(idx, img.shape, event)
 
     def get_frame(self, width, height, index):
-        index0 = width*height*(sum(index))
-        index1 = index0 + width*height
-        return np.reshape(self[index0:index1], [width, height])
+        index1 = index + width*height
+        return np.reshape(self[index:index1], [width, height])
 
     def complement_indices(self, event):
         indeces = dict(copy.deepcopy(event.index))
