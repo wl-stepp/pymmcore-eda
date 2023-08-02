@@ -32,6 +32,10 @@ class Canvas(QEventConsumer):
         self.setLayout(QtWidgets.QVBoxLayout())
         self.construct_canvas()
         self.layout().addWidget(self._canvas.native)
+
+        self.info_bar = QtWidgets.QLabel()
+        self.layout().addWidget(self.info_bar)
+
         self._create_sliders()
         self.listener.sequence_started.connect(self.on_sequence_start)
         self.listener.frame_ready.connect(self.on_frame_ready)
@@ -39,13 +43,14 @@ class Canvas(QEventConsumer):
     def construct_canvas(self):
         self._clims = "auto"
         self._canvas = scene.SceneCanvas(keys="interactive", size=(512, 512), parent=self)
+        self._canvas._send_hover_events = True
+        self._canvas.events.mouse_move.connect(self.on_mouse_move)
         self._canvas.show()
         self.view = self._canvas.central_widget.add_view()
         self.view.camera = scene.PanZoomCamera(aspect=1)
         self.view.camera.flip = (0, 1, 0)
         self.view.camera.set_range()
         self.image : scene.visuals.Image / None = None
-        self.image2 : scene.visuals.Image / None = None
 
     def on_sequence_start(self, sequence: MDASequence):
         self.width = mmcore.getImageWidth()
@@ -86,6 +91,10 @@ class Canvas(QEventConsumer):
             self.layout().addWidget(slider)
             slider.hide()
             self.sliders.append(slider)
+
+    def on_mouse_move(self, event):
+        info = f"[{event.pos[0]}, {event.pos[1]}] = {self.images[0]._data[event.pos[1], event.pos[0]]}"
+        self.info_bar.setText(info)
 
     # def _array_for_sequence(self, sequence: MDASequence):
     #     "Construct a numpy array to hold the data for the sequence"
@@ -157,6 +166,12 @@ class IndexSlider(QtWidgets.QSlider):
             self.hide()
         self.setRange(0, settings['max'])
 
+
+class InfoBar(QtWidgets.QLabel):
+    """Indicate information about the current position of sliders and mouse"""
+    def __init__(self, datastore: DataStore, canvas: Canvas, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setText("InfoBar")
 
 
 

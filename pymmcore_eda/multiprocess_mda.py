@@ -39,20 +39,20 @@ def check_saver(queue: Queue, buffer_name: str):
     saver.show()
 
     sys.exit(app.exec_())
-    print("Saver CLOSED")
+
 
 
 if __name__ == "__main__":
 
     event_queue = Queue()
     datastore = DataStore(create=True, name="test_buffer")
-    p = Process(target=check_saver, args=([event_queue, "test_buffer"]))
+    p = Process(target=check_receiver, args=([event_queue, "test_buffer"]))
     p.start()
-    time.sleep(5)
+    time.sleep(7)
     event_bus = EventBus(datastore, event_queue = event_queue)
     sequence = MDASequence(
     channels=[{"config": "DAPI", "exposure": 100}, {"config": "FITC", "exposure": 100}],
-    time_plan={"interval": 0.5, "loops":2},
+    time_plan={"interval": 0.5, "loops":5},
     axis_order="tpcz",
     )
     mmcore.run_mda(sequence)
