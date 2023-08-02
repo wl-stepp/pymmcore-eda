@@ -1,6 +1,6 @@
 import multiprocessing
 from _queue import Empty
-from datastore import DataStore
+from pymmcore_eda.datastore import DataStore
 from qtpy import QtWidgets, QtCore
 from useq import MDASequence
 import time
