@@ -1,8 +1,9 @@
 from vispy import app, scene
 from pymmcore_plus import CMMCorePlus
-from useq import MDASequence
+from useq import MDASequence, Channel
 import sys
 from qtpy import QtWidgets, QtCore
+
 from event_receiver import QEventConsumer, QEventReceiver
 import numpy as np
 import copy
@@ -10,6 +11,8 @@ import time
 from pathlib import Path
 from event_bus import EventBus
 from datastore import DataStore
+from pymmcore_eda.utility.range_slider import RangeSlider
+
 
 app.use_app("pyqt6")
 
@@ -22,8 +25,9 @@ DIMENSIONS = ["c", "z", "t", "p", "g"]
 class Canvas(QEventConsumer):
     """A canvas to follow MDA acquisitions"""
     _slider_settings = QtCore.Signal(dict)
+    _new_channel = QtCore.Signal(int, str)
 
-    def __init__(self, event_receiver: QEventReceiver|None = None, *args, **kwargs):
+    def __init__(self, event_receiver: QEventReceiver|EventBus|None = None, *args, **kwargs):
         super().__init__(event_receiver)
 
         self._clim = 'auto'
@@ -40,17 +44,20 @@ class Canvas(QEventConsumer):
         self.listener.sequence_started.connect(self.on_sequence_start)
         self.listener.frame_ready.connect(self.on_frame_ready)
 
+        self._new_channel.connect(self._handle_chbox_visibility)
+        self.images = []
+
+
     def construct_canvas(self):
         self._clims = "auto"
         self._canvas = scene.SceneCanvas(keys="interactive", size=(512, 512), parent=self)
         self._canvas._send_hover_events = True
         self._canvas.events.mouse_move.connect(self.on_mouse_move)
-        self._canvas.show()
         self.view = self._canvas.central_widget.add_view()
         self.view.camera = scene.PanZoomCamera(aspect=1)
         self.view.camera.flip = (0, 1, 0)
         self.view.camera.set_range()
-        self.image : scene.visuals.Image / None = None
+        self._canvas.show()
 
     def on_sequence_start(self, sequence: MDASequence):
         self.width = mmcore.getImageWidth()
@@ -65,11 +72,43 @@ class Canvas(QEventConsumer):
         self.images = []
         cmaps = ['reds', 'cool', 'viridis']
         for i in range(nc):
-            image = scene.visuals.Image(np.zeros([*array.shape[:2]]).astype(array.dtype),
+            image = scene.visuals.Image(np.zeros(self._canvas.size).astype(array.dtype),
                                         parent=self.view.scene, cmap=cmaps[i], clim=[0,1])
             image.set_gl_state(preset="additive")
-            image.opacity = 0.5
             self.images.append(image)
+            self.current_channel = i
+            self._new_channel.emit(i, sequence.channels[i].config)
+
+    def _handle_chbox_visibility(self, i: int, name: str):
+        self.channel_boxes[i].show()
+        self.channel_boxes[i].show_channel.setText(name)
+        self.channel_boxes[i].channel = name
+        self.channel_boxes[i].mousePressEvent(None)
+
+    def _handle_channel_choice(self, channel: str):
+        for idx, channel_box in enumerate(self.channel_boxes):
+            if channel_box.channel != channel:
+                channel_box.setStyleSheet("ChannelBox{border: 1px solid}")
+            else:
+                self.current_channel = idx
+
+    def _handle_channel_clim(self, low, high, channel: int, set_autoscale=True):
+        self.images[channel].clim = (low, high)
+        if self.channel_boxes[channel].autoscale.isChecked() and set_autoscale:
+            self.channel_boxes[channel].autoscale.setCheckState(QtCore.Qt.Unchecked)
+        self._canvas.update()
+
+    def _handle_channel_visibility(self, state, channel: int):
+        self.images[channel].visible = self.channel_boxes[channel].show_channel.isChecked()
+        self._canvas.update()
+
+    def _handle_channel_autoscale(self, state, channel: int):
+        if state == 0:
+            slider = self.channel_boxes[channel].slider
+            self._handle_channel_clim(slider.low(), slider.high(), channel, set_autoscale=False)
+        else:
+            clim = (np.min(self.images[channel]._data), np.max(self.images[channel]._data))
+            self._handle_channel_clim(clim[0], clim[1], channel, set_autoscale=False)
 
     def handle_sliders(self, sequence: MDASequence):
         for dim in DIMENSIONS[:3]:
@@ -85,6 +124,11 @@ class Canvas(QEventConsumer):
     def _create_sliders(self,):
         self.sliders = []
         for dim in DIMENSIONS:
+            if dim == 'c':
+                self.channel_row = QtWidgets.QWidget()
+                self.channel_row.setLayout(QtWidgets.QHBoxLayout())
+                self.layout().addWidget(self.channel_row)
+                continue
             slider = IndexSlider(dim, QtCore.Qt.Horizontal)
             slider.valueChanged.connect(self.on_slider_change)
             self._slider_settings.connect(slider._visibility)
@@ -92,9 +136,25 @@ class Canvas(QEventConsumer):
             slider.hide()
             self.sliders.append(slider)
 
+        self.channel_boxes = []
+        for i in range(5):
+            channel_box = ChannelBox(Channel(config="empty"))
+            channel_box.show_channel.stateChanged.connect(lambda state, i=i: self._handle_channel_visibility(state, i))
+            channel_box.autoscale.stateChanged.connect(lambda state, i=i: self._handle_channel_autoscale(state, i))
+            channel_box.slider.sliderMoved.connect(lambda low, high, i=i: self._handle_channel_clim(low, high, i))
+            channel_box.clicked.connect(self._handle_channel_choice)
+            channel_box.mousePressEvent(None)
+            channel_box.hide()
+            self.current_channel = i
+            self.channel_boxes.append(channel_box)
+            self.channel_row.layout().addWidget(channel_box)
+
     def on_mouse_move(self, event):
-        info = f"[{event.pos[0]}, {event.pos[1]}] = {self.images[0]._data[event.pos[1], event.pos[0]]}"
-        self.info_bar.setText(info)
+        try:
+            info = f"[{event.pos[0]}, {event.pos[1]}] = {self.images[self.current_channel]._data[event.pos[1], event.pos[0]]}"
+            self.info_bar.setText(info)
+        except IndexError:
+            pass
 
     # def _array_for_sequence(self, sequence: MDASequence):
     #     "Construct a numpy array to hold the data for the sequence"
@@ -121,9 +181,16 @@ class Canvas(QEventConsumer):
 
     def on_frame_ready(self, buffer_pos: int, shape: tuple, index):
         indices = self.complement_indices(index)
+        print(indices)
         img = self.datastore.get_frame(512, 512, buffer_pos)
         self.display_image(img, indices["c"])
         self._set_sliders(indices)
+
+        slider = self.channel_boxes[indices["c"]].slider
+        slider.setRange(min(slider.minimum(), img.min()), max(slider.maximum(), img.max()))
+        if self.channel_boxes[indices["c"]].autoscale.isChecked():
+            slider.setLow(min(slider.minimum(), img.min()))
+            slider.setHigh(max(slider.maximum(), img.max()))
 
     def _set_sliders(self, indices: dict):
         for slider in self.sliders:
@@ -131,11 +198,13 @@ class Canvas(QEventConsumer):
             slider.setValue(indices[slider.index])
             slider.blockSignals(False)
 
-    def display_image(self, img, channel=0):
+    def display_image(self, img: [scene.visuals.Image], channel=0):
         self.images[channel].set_data(img)
-        if self._clim == 'auto':
+        if self.channel_boxes[channel].autoscale.isChecked():
             clim = (np.min(img), np.max(img))
-        self.images[channel].clim = clim
+            self.images[channel].clim = clim
+            # else:
+            # clim = (self.channel_boxes[channel].slider.low(), self.channel_boxes[channel].slider.high())
         self._canvas.update()
 
     def complement_indices(self, index):
@@ -167,30 +236,44 @@ class IndexSlider(QtWidgets.QSlider):
         self.setRange(0, settings['max'])
 
 
-class InfoBar(QtWidgets.QLabel):
-    """Indicate information about the current position of sliders and mouse"""
-    def __init__(self, datastore: DataStore, canvas: Canvas, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.setText("InfoBar")
+class ChannelBox(QtWidgets.QFrame):
+    """Box that represents a channel and gives some way of interaction."""
 
+    clicked = QtCore.Signal(str)
+
+    def __init__(self, channel, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.channel = channel.config
+        self.setLayout(QtWidgets.QGridLayout())
+        self.show_channel = QtWidgets.QCheckBox(channel.config)
+        self.show_channel.setChecked(True)
+        self.show_channel.setStyleSheet("font-weight: bold")
+        self.layout().addWidget(self.show_channel, 0, 0)
+        self.autoscale = QtWidgets.QCheckBox("Auto")
+        self.autoscale.setChecked(True)
+        self.layout().addWidget(self.autoscale, 0, 1)
+        self.slider = RangeSlider(QtCore.Qt.Horizontal)
+        self.layout().addWidget(self.slider, 1, 0, 1, 2)
+        self.setStyleSheet("ChannelBox{border: 1px solid}")
+
+    def mousePressEvent(self, event):
+        self.setStyleSheet("ChannelBox{border: 3px solid}")
+        self.clicked.emit(self.channel)
 
 
 
 if __name__ == "__main__":
-    gui = QtWidgets.QApplication(sys.argv)
-    datastore = DataStore()
-    event_bus = EventBus(datastore)
 
-    # saver = Saver(event_bus)
-    # saver.show()
+    app = QtWidgets.QApplication(sys.argv)
+    datastore = DataStore(name="canvas")
+    event_bus = EventBus(datastore)
     w = Canvas(event_bus)
     w.show()
-    # mda = MDAWidget(include_run_button=True)
-    # mda.show()
+
     sequence = MDASequence(
-    channels=[{"config": "FITC", "exposure": 10}, {"config": "DAPI", "exposure": 10}],
+    channels=[{"config": "FITC", "exposure": 10}, {"config": "DAPI", "exposure": 10}, {"config": "Cy5", "exposure": 10}],
     time_plan={"interval": 1, "loops": 5},
     axis_order="tpcz",
     )
     mmcore.run_mda(sequence)
-    app.run()
+    sys.exit(app.exec_())
