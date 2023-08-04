@@ -48,12 +48,10 @@ class Canvas(QEventConsumer):
         self.image2 : scene.visuals.Image / None = None
 
     def on_sequence_start(self, sequence: MDASequence):
-        self.width = mmcore.getImageWidth()
-        self.height = mmcore.getImageHeight()
         self.sequence = sequence
         self.handle_sliders(sequence)
         self.handle_channels(sequence, self.datastore)
-        self.view.camera.rect = ((0, 0, self.width, self.height))
+        self.view.camera.rect = ((0, 0, 512, 512))
 
     def handle_channels(self, sequence: MDASequence, array: np.ndarray):
         nc = sequence.sizes['c']
@@ -87,20 +85,6 @@ class Canvas(QEventConsumer):
             slider.hide()
             self.sliders.append(slider)
 
-    # def _array_for_sequence(self, sequence: MDASequence):
-    #     "Construct a numpy array to hold the data for the sequence"
-    #     exp_shape = sequence.sizes
-    #     dt = mmcore.getImageBitDepth()
-    #     dt = np.uint16 if dt == 16 else print("WARNING: bit depth not supported")
-    #     width = mmcore.getImageWidth()
-    #     height = mmcore.getImageHeight()
-    #     array =
-    #     return np.zeros([width,
-    #                     height,
-    #                     max(exp_shape['c'], 1),
-    #                     max(exp_shape['z'], 1),
-    #                     max(exp_shape['t'], 1)]).astype(dt)
-
     def on_slider_change(self, value, index):
         self.display_index[index] = value
         for c in range(self.sequence.sizes['c']):
@@ -111,8 +95,9 @@ class Canvas(QEventConsumer):
             self.display_image(frame, c)
 
     def on_frame_ready(self, buffer_pos: int, shape: tuple, index):
+        self.width, self.height = shape
         indices = self.complement_indices(index)
-        img = self.datastore.get_frame(512, 512, buffer_pos)
+        img = self.datastore.get_frame(shape[0], shape[1], buffer_pos)
         self.display_image(img, indices["c"])
         self._set_sliders(indices)
 
