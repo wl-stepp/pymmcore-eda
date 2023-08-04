@@ -16,6 +16,10 @@ class DataStore(BufferedArray):
     frame_ready = Signal(int, tuple, MDAEvent)
 
     def __new__(self, create: bool = True, *args, **kwargs):
+        try:
+            self.name = kwargs['name']
+        except:
+            pass
         return super().__new__(DataStore, capacity=int(10E8), dtype=np.uint16, create=create, *args, **kwargs)
 
     def __init__(self, *args, **kwargs):
