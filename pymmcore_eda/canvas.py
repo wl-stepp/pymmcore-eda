@@ -148,10 +148,18 @@ class Canvas(QEventConsumer):
             self.channel_row.layout().addWidget(channel_box)
 
     def on_mouse_move(self, event):
+        transform = self.images[self.current_channel].get_transform('canvas', 'visual')
+        p = [int(x) for x in transform.map(event.pos)]
+        if p[0] < 0 or p[1] < 0:
+            info = f"[{p[0]}, {p[1]}]"
+            self.info_bar.setText(info)
+            return
         try:
-            info = f"[{event.pos[0]}, {event.pos[1]}] = {self.images[self.current_channel]._data[event.pos[1], event.pos[0]]}"
+            info = f"[{p[0]}, {p[1]}] = {self.images[self.current_channel]._data[p[1], p[0]]}"
             self.info_bar.setText(info)
         except IndexError:
+            info = f"[{p[0]}, {p[1]}]"
+            self.info_bar.setText(info)
             pass
 
 
@@ -258,7 +266,8 @@ if __name__ == "__main__":
 
     sequence = MDASequence(
     channels=[{"config": "FITC", "exposure": 10}, {"config": "DAPI", "exposure": 10}, {"config": "Cy5", "exposure": 10}],
-    time_plan={"interval": 1, "loops": 5},
+    time_plan={"interval": 1, "loops": 10},
+    # z_plan={"range": 2, "step": 1},
     axis_order="tpcz",
     )
     mmcore.run_mda(sequence)
