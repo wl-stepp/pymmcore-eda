@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 from event_bus import EventBus
 from datastore import DataStore
+from pymmcore_eda.utility.index_slider import QLabeledSlider
 from pymmcore_eda.utility.range_slider import RangeSlider
 
 
@@ -130,8 +131,8 @@ class Canvas(QEventConsumer):
                                                QtWidgets.QSizePolicy.Fixed)
                 self.layout().addWidget(self.channel_row)
                 continue
-            slider = LabeledIndexSlider(index=dim,  orientation=QtCore.Qt.Horizontal)
-            slider.valueChanged.connect(self.on_slider_change)
+            slider = LabeledVisibilitySlider(dim,  orientation=QtCore.Qt.Horizontal)
+            slider.valueChanged[int, str].connect(self.on_slider_change)
             self._slider_settings.connect(slider._visibility)
             self.layout().addWidget(slider)
             slider.hide()
@@ -210,7 +211,18 @@ class Canvas(QEventConsumer):
         return indeces
 
 
+class LabeledVisibilitySlider(QLabeledSlider):
+    def __init__(self, name, *args, **kwargs):
+        super().__init__(name, *args, **kwargs)
 
+    def _visibility(self, settings):
+        if not settings['index'] == self.name:
+            return
+        if settings['show']:
+            self.show()
+        else:
+            self.hide()
+        self.setRange(0, settings['max'])
 
 class ChannelBox(QtWidgets.QFrame):
     """Box that represents a channel and gives some way of interaction."""
