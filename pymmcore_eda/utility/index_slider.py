@@ -1,4 +1,6 @@
 from qtpy import QtWidgets, QtCore
+from functools import wraps
+
 
 class QLabeledSlider(QtWidgets.QWidget):
     """Slider that shows name of the axis and current value."""
@@ -11,16 +13,19 @@ class QLabeledSlider(QtWidgets.QWidget):
         # super().__init__(self, *args, **kwargs)
         super().__init__()
         self.name = name
-        # if name == "":
-        #     self.valueChanged = QtCore.Signal(int)
-        # else:
-        #     self.valueChanged = QtCore.Signal(int, "str")
+
+
 
         self.label = QtWidgets.QLabel()
         self.label.setText(name)
         self.label.setAlignment(QtCore.Qt.AlignRight)
         self.label.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
         self.slider = QtWidgets.QSlider(orientation)
+        for function in ["blockSignals", "setTickInterval","setTickPosition", "tickInterval",
+                         "tickPosition", "minimum", "maximum", "setTracking", "value"]:
+            func = getattr(self.slider, function)
+            setattr(self, function, func)
+
         self.current_value = QtWidgets.QLabel()
         self.current_value.setText("0")
         self.current_value.setAlignment(QtCore.Qt.AlignLeft)
@@ -45,8 +50,17 @@ class QLabeledSlider(QtWidgets.QWidget):
         else:
             self.valueChanged[int,str].emit(value, self.name)
 
+    def setMaximum(self, maximum: int):
+        self.current_value.setText(f"{str(self.value())}/{str(maximum)}")
+        self.slider.setMaximum(maximum)
+
     def setRange(self, minimum, maximum):
-        self.slider.setRange(minimum, maximum)
+        self.current_value.setText(f"{str(self.value())}/{str(maximum)}")
+        self.slider.setMaximum(maximum)
+
+    def setValue(self, value):
+        self.current_value.setText(f"{str(value)}/{str(self.maximum())}")
+        self.slider.setValue(value)
 
 if __name__ == "__main__":
     import sys

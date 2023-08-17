@@ -178,10 +178,9 @@ class Canvas(QEventConsumer):
         self.width, self.height = shape
         indices = self.complement_indices(index)
         img = self.datastore.get_frame(shape[0], shape[1], buffer_pos)
-        print(img[0])
         self.display_image(img, indices["c"])
         self._set_sliders(indices)
-
+        print("Checkpoint")
         slider = self.channel_boxes[indices["c"]].slider
         slider.setRange(min(slider.minimum(), img.min()), max(slider.maximum(), img.max()))
         if self.channel_boxes[indices["c"]].autoscale.isChecked():
@@ -191,7 +190,7 @@ class Canvas(QEventConsumer):
     def _set_sliders(self, indices: dict):
         for slider in self.sliders:
             slider.blockSignals(True)
-            slider.setValue(indices[slider.index])
+            slider.setValue(indices[slider.name])
             slider.blockSignals(False)
 
     def display_image(self, img: [scene.visuals.Image], channel=0):
@@ -204,7 +203,7 @@ class Canvas(QEventConsumer):
         self._canvas.update()
 
     def complement_indices(self, index):
-        indeces = dict(copy.deepcopy(index))
+        indeces = dict(copy.deepcopy(dict(index)))
         for i in DIMENSIONS:
             if i not in indeces:
                 indeces[i] = 0

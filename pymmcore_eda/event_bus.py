@@ -47,6 +47,7 @@ class EventBus:
             self.datastore.frame_ready.connect(self.on_frame_ready)
 
         def on_frame_ready(self, idx: int, shape: tuple, event: MDAEvent):
+            print("Frame ready in EventListener")
             self.frame_ready.emit(idx, shape, event.index)
 
 

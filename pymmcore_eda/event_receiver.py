@@ -1,6 +1,7 @@
 import multiprocessing
 from _queue import Empty
 from pymmcore_eda.datastore import DataStore
+from pymmcore_eda.event_bus import EventBus
 from qtpy import QtWidgets, QtCore
 from useq import MDASequence
 import time
@@ -50,8 +51,9 @@ class QEventListener(QtCore.QObject):
                 if self.stop_requested:
                     break
                 else:
+                    print("EventListener Timeout")
                     continue
-
+            print(event)
             match event["name"]:
                 case "stop":
                     print("STOP")
@@ -70,9 +72,8 @@ class QEventListener(QtCore.QObject):
 
 
 class QEventConsumer(QtWidgets.QWidget):
-    def __init__(self, event_receiver: QEventReceiver|None = None, *args, **kwargs):
+    def __init__(self, event_receiver: QEventReceiver|EventBus|None = None, *args, **kwargs):
         super().__init__()
-        print(event_receiver)
         self.event_receiver = QEventReceiver() if event_receiver is None else event_receiver
         self.datastore = self.event_receiver.datastore
         self.listener = event_receiver.listener
