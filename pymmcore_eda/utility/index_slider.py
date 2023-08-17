@@ -31,6 +31,7 @@ class QLabeledSlider(QtWidgets.QWidget):
         self.layout().addWidget(self.label)
         self.layout().addWidget(self.slider)
         self.layout().addWidget(self.current_value)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
 
         self.slider.valueChanged.connect(self.handle_valueChanged)
         self.slider.sliderPressed.connect(self.sliderPressed)

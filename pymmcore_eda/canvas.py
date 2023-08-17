@@ -49,7 +49,6 @@ class Canvas(QEventConsumer):
         self._new_channel.connect(self._handle_chbox_visibility)
         self.images = []
 
-
     def construct_canvas(self):
         self._clims = "auto"
         self._canvas = scene.SceneCanvas(keys="interactive", size=(512, 512), parent=self)
@@ -179,6 +178,7 @@ class Canvas(QEventConsumer):
         self.width, self.height = shape
         indices = self.complement_indices(index)
         img = self.datastore.get_frame(shape[0], shape[1], buffer_pos)
+        print(img[0])
         self.display_image(img, indices["c"])
         self._set_sliders(indices)
 
@@ -260,7 +260,7 @@ if __name__ == "__main__":
     # mmcore.setExposure(100)
     # w.setFixedSize(1024, 1024)
     sequence = MDASequence(
-    channels=[{"config": "FITC", "exposure": 10}, {"config": "DAPI", "exposure": 500}, {"config": "Cy5", "exposure": 10}],
+    channels=[{"config": "FITC", "exposure": 10}, {"config": "DAPI", "exposure": 10}, {"config": "Cy5", "exposure": 10}],
     time_plan={"interval": 1, "loops": 3},
     # z_plan={"range": 2, "step": 1},
     axis_order="tpcz",
