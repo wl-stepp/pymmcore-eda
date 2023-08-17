@@ -1,6 +1,6 @@
 
 from useq import MDASequence, MDAEvent
-from pymmcore_eda.datastore import DataStore
+from pymmcore_eda.datastore import BufferedDataStore
 from pymmcore_plus import CMMCorePlus
 import sys
 import multiprocessing
@@ -15,7 +15,7 @@ class EventBus:
     to have an event_receiver in another process that communicates via an event queue.
     """
 
-    def __init__(self, datastore: DataStore, event_queue: multiprocessing.Queue = None, *args, **kwargs):
+    def __init__(self, datastore: BufferedDataStore, event_queue: multiprocessing.Queue = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.datastore = datastore
 
@@ -47,7 +47,6 @@ class EventBus:
             self.datastore.frame_ready.connect(self.on_frame_ready)
 
         def on_frame_ready(self, idx: int, shape: tuple, event: MDAEvent):
-            print("Frame ready in EventListener")
             self.frame_ready.emit(idx, shape, event.index)
 
 

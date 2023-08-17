@@ -1,6 +1,6 @@
 import multiprocessing
 from _queue import Empty
-from pymmcore_eda.datastore import DataStore
+from pymmcore_eda.datastore import BufferedDataStore
 from pymmcore_eda.event_bus import EventBus
 from qtpy import QtWidgets, QtCore
 from useq import MDASequence
@@ -14,7 +14,7 @@ class QEventReceiver(QtCore.QObject):
     def __init__(self, queue: multiprocessing.Queue, buffer_name: str):
         super().__init__()
         self.queue = queue
-        self.datastore = DataStore(create=False, name=buffer_name)
+        self.datastore = BufferedDataStore(create=False, name=buffer_name)
         self.event_thread = QtCore.QThread()
         self.listener = QEventListener(self, self.queue, self.datastore)
         self.listener.moveToThread(self.event_thread)
@@ -32,7 +32,7 @@ class QEventListener(QtCore.QObject):
     sequence_started = QtCore.Signal(MDASequence)
     frame_ready = QtCore.Signal(int, tuple, dict)
     def __init__(self, receiver: QEventReceiver,
-                 queue: multiprocessing.Queue, datastore: DataStore):
+                 queue: multiprocessing.Queue, datastore: BufferedDataStore):
         super().__init__()
         self.receiver = receiver
         self.queue = queue

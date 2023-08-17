@@ -45,7 +45,7 @@ class QLabeledSlider(QtWidgets.QWidget):
 
     def handle_valueChanged(self, value):
         self.current_value.setText(f"{str(value)}/{str(self.slider.maximum())}")
-        if self.name != "":
+        if self.name == "":
             self.valueChanged[int].emit(value)
         else:
             self.valueChanged[int,str].emit(value, self.name)
