@@ -38,6 +38,7 @@ class Canvas(QEventConsumer):
         self.layout().addWidget(self._canvas.native)
 
         self.info_bar = QtWidgets.QLabel()
+        self.info_bar.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
         self.layout().addWidget(self.info_bar)
 
         self._create_sliders()
@@ -125,9 +126,11 @@ class Canvas(QEventConsumer):
             if dim == 'c':
                 self.channel_row = QtWidgets.QWidget()
                 self.channel_row.setLayout(QtWidgets.QHBoxLayout())
+                self.channel_row.setSizePolicy(QtWidgets.QSizePolicy.Expanding,
+                                               QtWidgets.QSizePolicy.Fixed)
                 self.layout().addWidget(self.channel_row)
                 continue
-            slider = IndexSlider(dim, QtCore.Qt.Horizontal)
+            slider = LabeledIndexSlider(index=dim,  orientation=QtCore.Qt.Horizontal)
             slider.valueChanged.connect(self.on_slider_change)
             self._slider_settings.connect(slider._visibility)
             self.layout().addWidget(slider)
@@ -161,8 +164,6 @@ class Canvas(QEventConsumer):
             info = f"[{p[0]}, {p[1]}]"
             self.info_bar.setText(info)
             pass
-
-
 
     def on_slider_change(self, value, index):
         self.display_index[index] = value
@@ -209,25 +210,6 @@ class Canvas(QEventConsumer):
         return indeces
 
 
-class IndexSlider(QtWidgets.QSlider):
-    """Slider that gets an index when created and transmits it when value changes."""
-    valueChanged = QtCore.Signal(int, str)
-    def __init__(self, index, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.index = index
-        super().valueChanged.connect(self.orig_valueChanged)
-
-    def orig_valueChanged(self, value):
-        self.valueChanged.emit(value, self.index)
-
-    def _visibility(self, settings):
-        if not settings['index'] == self.index:
-            return
-        if settings['show']:
-            self.show()
-        else:
-            self.hide()
-        self.setRange(0, settings['max'])
 
 
 class ChannelBox(QtWidgets.QFrame):
@@ -263,10 +245,11 @@ if __name__ == "__main__":
     event_bus = EventBus(datastore)
     w = Canvas(event_bus)
     w.show()
-
+    # mmcore.setExposure(100)
+    # w.setFixedSize(1024, 1024)
     sequence = MDASequence(
-    channels=[{"config": "FITC", "exposure": 10}, {"config": "DAPI", "exposure": 10}, {"config": "Cy5", "exposure": 10}],
-    time_plan={"interval": 1, "loops": 10},
+    channels=[{"config": "FITC", "exposure": 10}, {"config": "DAPI", "exposure": 500}, {"config": "Cy5", "exposure": 10}],
+    time_plan={"interval": 1, "loops": 3},
     # z_plan={"range": 2, "step": 1},
     axis_order="tpcz",
     )
