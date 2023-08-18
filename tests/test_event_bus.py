@@ -1,8 +1,8 @@
 import multiprocessing
 
-from pymmcore_eda.event_bus import EventBus
+from pymmcore_eda.event_sender import EventSender
 from pymmcore_plus import CMMCorePlus
-from pymmcore_eda.datastore import DataStore
+from pymmcore_eda.buffered_datastore import BufferedDataStore
 from useq import MDASequence
 
 mmcore = CMMCorePlus.instance()
@@ -15,15 +15,15 @@ sequence = MDASequence(
     )
 
 def test_datastore():
-    datastore = DataStore()
+    datastore = BufferedDataStore(create=True)
     assert datastore[0] == 0
     mmcore.run_mda(sequence, block=True)
     assert datastore[0] != 0
 
 
 def test_event_bus():
-    datastore = DataStore()
+    datastore = BufferedDataStore(create=True)
     queue = multiprocessing.Queue()
-    event_bus = EventBus(datastore, queue)
+    event_bus = EventSender(datastore, queue)
     mmcore.run_mda(sequence, block=True)
     assert not queue.empty()

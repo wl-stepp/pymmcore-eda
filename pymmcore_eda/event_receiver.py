@@ -1,22 +1,21 @@
 import multiprocessing
 from _queue import Empty
-from pymmcore_eda.datastore import BufferedDataStore
-from pymmcore_eda.event_bus import EventBus
+from pymmcore_eda.buffered_datastore import BufferedDataStore
+from pymmcore_eda.archive.event_bus import EventBus
 from qtpy import QtWidgets, QtCore
-from useq import MDASequence
+from useq import MDASequence, MDAEvent
 import time
-
+import yaml
 
 class QEventReceiver(QtCore.QObject):
 
     stop_thread = QtCore.Signal()
 
-    def __init__(self, queue: multiprocessing.Queue, buffer_name: str):
+    def __init__(self, queue: multiprocessing.Queue):
         super().__init__()
         self.queue = queue
-        self.datastore = BufferedDataStore(create=False, name=buffer_name)
         self.event_thread = QtCore.QThread()
-        self.listener = QEventListener(self, self.queue, self.datastore)
+        self.listener = QEventListener(self, self.queue)
         self.listener.moveToThread(self.event_thread)
         self.event_thread.started.connect(self.listener.start)
 
@@ -30,13 +29,12 @@ class QEventReceiver(QtCore.QObject):
 
 class QEventListener(QtCore.QObject):
     sequence_started = QtCore.Signal(MDASequence)
-    frame_ready = QtCore.Signal(int, tuple, dict)
+    frame_ready = QtCore.Signal(MDAEvent)
     def __init__(self, receiver: QEventReceiver,
-                 queue: multiprocessing.Queue, datastore: BufferedDataStore):
+                 queue: multiprocessing.Queue):
         super().__init__()
         self.receiver = receiver
         self.queue = queue
-        self.datastore = datastore
         self.stop_requested = False
         self.receiver.stop_thread.connect(self.stop)
 
@@ -51,21 +49,17 @@ class QEventListener(QtCore.QObject):
                 if self.stop_requested:
                     break
                 else:
-                    print("EventListener Timeout")
                     continue
-            print(event)
             match event["name"]:
                 case "stop":
-                    print("STOP")
+                    print("STOP EventListener")
                     break
                 case "frame_ready":
-                    print("EVENTRECEIVER", event["buffer_idx"])
-                    self.frame_ready.emit(event["buffer_idx"], event["shape"], dict(event["index"]))
+                    seq_dict = yaml.load(event["yaml"], Loader=yaml.FullLoader)
+                    self.frame_ready.emit(MDAEvent().model_validate(seq_dict))
                 case "sequence_started":
-                    print(event["dict"])
-                    self.sequence_started.emit(MDASequence(time_plan = event["dict"]["time_plan"],
-                                                    channels = event["dict"]["channels"],
-                                                    axis_order = event["dict"]["axis_order"]))
+                    seq_dict = yaml.load(event["yaml"], Loader=yaml.FullLoader)
+                    self.sequence_started.emit(MDASequence().model_validate(seq_dict))
 
     def stop(self):
         self.stop_requested = True
@@ -75,7 +69,7 @@ class QEventConsumer(QtWidgets.QWidget):
     def __init__(self, event_receiver: QEventReceiver|EventBus|None = None, *args, **kwargs):
         super().__init__()
         self.event_receiver = QEventReceiver() if event_receiver is None else event_receiver
-        self.datastore = self.event_receiver.datastore
+        # self.datastore = self.event_receiver.datastore
         self.listener = event_receiver.listener
 
     def closeEvent(self, event):
@@ -83,3 +77,26 @@ class QEventConsumer(QtWidgets.QWidget):
         time.sleep(1)
         self.hide()
         super().closeEvent(event)
+
+
+if __name__ == "__main__":
+    from pymmcore_plus import CMMCorePlus
+    mmcore = CMMCorePlus.instance()
+    mmcore.loadSystemConfiguration()
+    sequence = MDASequence(
+        channels=[{"config": "DAPI", "exposure": 10}],
+        time_plan={"interval": 0, "loops":2},
+        axis_order="tpcz",
+        )
+
+    datastore = BufferedDataStore(create=True)
+    queue = multiprocessing.Queue()
+    # event_bus = EventBus(datastore, queue)
+    receiver = QEventReceiver(queue)
+    # assert datastore._shm.name == receiver.datastore._shm.name
+    mmcore.run_mda(sequence)
+
+    time.sleep(2)
+    assert queue.empty() # Should have been received and popped by the EventReceiver
+    # assert receiver.datastore[0] != 0
+    datastore.close()

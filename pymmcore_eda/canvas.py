@@ -1,8 +1,8 @@
-from vispy import app, scene
+from vispy import app, scene, color
 from pymmcore_plus import CMMCorePlus
 from useq import MDASequence, Channel, MDAEvent
 import sys
-from qtpy import QtWidgets, QtCore
+from qtpy import QtWidgets, QtCore, QtGui
 from copy import deepcopy
 
 from event_receiver import QEventConsumer, QEventReceiver
@@ -15,6 +15,7 @@ from event_bus import EventBus
 from datastore import BufferedDataStore, complement_indices
 from pymmcore_eda.utility.index_slider import QLabeledSlider
 from pymmcore_eda.utility.range_slider import RangeSlider
+from pymmcore_eda.utility.color_picker import QColorComboBox
 
 
 app.use_app("pyqt6")
@@ -23,10 +24,13 @@ mmcore = CMMCorePlus.instance()
 mmcore.loadSystemConfiguration()
 
 DIMENSIONS = ["c", "z", "t", "p", "g"]
-AUTOCLIM_RATE = 1 #Hz   0 = inf
+AUTOCLIM_RATE = 2 #Hz   0 = inf
+CMAPS = [color.Colormap([[0, 0, 0], [1, 1, 0]]), color.Colormap([[0, 0, 0], [1, 0, 1]]),
+         color.Colormap([[0, 0, 0], [0, 1, 1]]), color.Colormap([[0, 0, 0], [1, 0, 0]]),
+         color.Colormap([[0, 0, 0], [0, 1, 0]]), color.Colormap([[0, 0, 0], [0, 0, 1]])]
 
 class Canvas(QEventConsumer):
-    """A canvas to follow MDA acquisitions"""
+    """A canvas to follow MDA acquisitions started by MDASequence events"""
     _slider_settings = QtCore.Signal(dict)
     _new_channel = QtCore.Signal(int, str)
 
@@ -56,7 +60,7 @@ class Canvas(QEventConsumer):
         self.display_timer.timeout.connect(self.on_display_timer)
 
         self.clim_timer = QtCore.QTimer()
-        self.clim_timer.setInterval(1000 // AUTOCLIM_RATE)
+        self.clim_timer.setInterval(int(1000 // AUTOCLIM_RATE))
         self.clim_timer.timeout.connect(self.on_clim_timer)
 
     def construct_canvas(self):
@@ -74,15 +78,13 @@ class Canvas(QEventConsumer):
         self.sequence = sequence
         self.handle_sliders(sequence)
         self.handle_channels(sequence, self.datastore)
-        # self.view.camera.rect = ((0, 0, *self.datastore.get_frame([0,0,0]).shape))
 
     def handle_channels(self, sequence: MDASequence, array: np.ndarray):
         nc = sequence.sizes['c']
         self.images = []
-        cmaps = ['reds', 'cool', 'viridis']
         for i in range(nc):
             image = scene.visuals.Image(np.zeros(self._canvas.size).astype(array.dtype),
-                                        parent=self.view.scene, cmap=cmaps[i], clim=[0,1])
+                                        parent=self.view.scene, cmap=CMAPS[i], clim=[0,1])
             image.set_gl_state(preset="additive")
             self.images.append(image)
             self.current_channel = i
@@ -106,6 +108,11 @@ class Canvas(QEventConsumer):
         self.images[channel].clim = (low, high)
         if self.channel_boxes[channel].autoscale.isChecked() and set_autoscale:
             self.channel_boxes[channel].autoscale.setCheckState(QtCore.Qt.Unchecked)
+        self._canvas.update()
+
+    def _handle_channel_cmap(self, my_color, channel: int):
+        my_color = [x//255 for x in my_color.getRgb()[:3]]
+        self.images[channel].cmap = color.Colormap([[0, 0, 0], my_color])
         self._canvas.update()
 
     def _handle_channel_visibility(self, state, channel: int):
@@ -156,6 +163,8 @@ class Canvas(QEventConsumer):
             channel_box.show_channel.stateChanged.connect(lambda state, i=i: self._handle_channel_visibility(state, i))
             channel_box.autoscale.stateChanged.connect(lambda state, i=i: self._handle_channel_autoscale(state, i))
             channel_box.slider.sliderMoved.connect(lambda low, high, i=i: self._handle_channel_clim(low, high, i))
+            channel_box.color_choice.selectedColor.connect(lambda color, i=i: self._handle_channel_cmap(color, i))
+            channel_box.color_choice.setColor(i)
             channel_box.clicked.connect(self._handle_channel_choice)
             channel_box.mousePressEvent(None)
             channel_box.hide()
@@ -188,6 +197,7 @@ class Canvas(QEventConsumer):
         self.display_timer.stop()
         self.clim_timer.stop()
         self.on_display_timer()
+        self.on_clim_timer()
         for slider in self.sliders:
             slider.valueChanged[int, str].connect(self.on_display_timer)
 
@@ -199,7 +209,6 @@ class Canvas(QEventConsumer):
                                               self.display_index['t']])
             self.display_image(frame, c)
         self._canvas.update()
-
 
     def on_frame_ready(self, buffer_pos: int, shape: tuple, index):
         self.width, self.height = shape
@@ -224,16 +233,6 @@ class Canvas(QEventConsumer):
 
     def display_image(self, img: [scene.visuals.Image], channel=0):
         self.images[channel].set_data(img)
-        # if not self.images[channel].visible:
-        #     return
-        # if self.channel_boxes[channel].autoscale.isChecked() and AUTOCLIM_RATE == 0:
-        #     t0 = time.perf_counter()
-        #     clim = np.percentile(img, [0, 100])
-        #     print(time.perf_counter() - t0)
-        #     self.images[channel].clim = clim
-            # else:
-            # clim = (self.channel_boxes[channel].slider.low(), self.channel_boxes[channel].slider.high())
-        # self._canvas.update()
 
     def on_clim_timer(self, channel=None):
         channel_list = list(range(len(self.channel_boxes))) if channel is None else [channel]
@@ -277,11 +276,17 @@ class ChannelBox(QtWidgets.QFrame):
         self.show_channel.setChecked(True)
         self.show_channel.setStyleSheet("font-weight: bold")
         self.layout().addWidget(self.show_channel, 0, 0)
+        self.color_choice = QColorComboBox()
+        for cmap in CMAPS:
+            self.color_choice.addColors([list(cmap.colors[-1].RGB[0])])
+
+        # self.color_choice.setStyle(QtWidgets.QStyleFactory.create('fusion'))
+        self.layout().addWidget(self.color_choice, 0, 1)
         self.autoscale = QtWidgets.QCheckBox("Auto")
         self.autoscale.setChecked(False)
-        self.layout().addWidget(self.autoscale, 0, 1)
+        self.layout().addWidget(self.autoscale, 0, 2)
         self.slider = RangeSlider(QtCore.Qt.Horizontal)
-        self.layout().addWidget(self.slider, 1, 0, 1, 2)
+        self.layout().addWidget(self.slider, 1, 0, 1, 3)
         self.setStyleSheet("ChannelBox{border: 1px solid}")
 
     def mousePressEvent(self, event):
@@ -292,22 +297,30 @@ class ChannelBox(QtWidgets.QFrame):
 class DataStore(QtCore.QObject):
     frame_ready = QtCore.Signal(int, tuple, MDAEvent)
     """Store to have the data ready for a canvas to display."""
-    def __init__(self, shape: tuple, datastore: None|BufferedDataStore = None,
-                 dtype: npt.DTypeLike = np.int16, *args, **kwargs):
+    def __init__(self, shape: tuple, dtype: npt.DTypeLike = np.int16, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.dtype = np.dtype(dtype)
         self.array = np.ndarray(shape, dtype=self.dtype, *args, **kwargs)
         setattr(self, "complement_indices", complement_indices)
-        #Connect to the datastore if passed or directly to the core
-        if datastore is None:
-            mmcore.mda.events.frameReady.connect(self.new_frame)
-        else:
-            self.datastore = datastore
-            self.datastore.frame_ready.connect(self.new_frame_buffer)
+
+        self.listener = self.EventListener()
+        self.listener.start()
+        self.listener.frame_ready.connect(self.new_frame)
+
+    class EventListener(QtCore.QThread):
+        "Receive events in a separate thread"
+        frame_ready = QtCore.Signal(np.ndarray, MDAEvent)
+        def __init__(self):
+            super().__init__()
+            mmcore.mda.events.frameReady.connect(self.on_frame_ready)
+
+        def on_frame_ready(self, img: np.ndarray, event: MDAEvent):
+            self.frame_ready.emit(img, event)
 
     def new_frame(self, img: np.ndarray, event: MDAEvent):
         self.shape = img.shape
         indices = self.complement_indices(event)
+        img = img*(indices["t"] + 1)//10
         try:
             self.array[:, :, indices["c"], indices["z"], indices["t"]] = img
         except IndexError:
@@ -316,25 +329,13 @@ class DataStore(QtCore.QObject):
             return
         self.frame_ready.emit(0, self.shape, event)
 
-    def new_frame_buffer(self, idx: int, shape: tuple, event: MDAEvent):
-        self.shape = shape
-        indices = self.complement_indices(event)
-        try:
-            self.array[:, :, indices["c"], indices["z"], indices["t"]] = deepcopy(self.datastore.get_frame([indices["c"],
-                                                                                                indices["z"],
-                                                                                                indices["t"]]))
-        except IndexError:
-            self.correct_shape(indices)
-            self.new_frame_buffer(idx, shape, event)
-            return
-        self.frame_ready.emit(0, self.shape, event)
-
     def correct_shape(self, indices: tuple) -> None:
+        "The initialised shape does not fit the data, extend the array."
         min_shape = [indices['c'], indices['z'], indices['t']]
         diff = [x - y for x, y in zip(min_shape, self.array.shape[2:])]
         for i, app in enumerate(diff):
             if app >= 0:
-                if i == 2:
+                if i == 2: # handle time differently, double the size
                     app = self.array.shape[4]
                 append_shape = [*self.array.shape[:i+2], app + 1, *self.array.shape[i+3:]]
                 self.array = np.append(self.array, np.zeros(append_shape, self.array.dtype),
@@ -345,23 +346,26 @@ class DataStore(QtCore.QObject):
         return self.array[:, :, *key]
 
 
+
 if __name__ == "__main__":
+    import itertools
     mmcore.setProperty("Camera", "OnCameraCCDXSize", 2048)
     mmcore.setProperty("Camera", "OnCameraCCDYSize", 2048)
-    mmcore.setProperty("Camera", "StripeWidth", 0.2)
+    mmcore.setProperty("Camera", "StripeWidth", 0.8)
     app = QtWidgets.QApplication(sys.argv)
-    buffer = BufferedDataStore()
     datastore = DataStore([2048, 2048, 2, 1, 3])
     event_bus = EventBus(datastore)
     w = Canvas(event_bus)
     w.show()
-    # mmcore.setExposure(100)
-    # w.setFixedSize(1024, 1024)
+
     sequence = MDASequence(
-    channels=[{"config": "FITC", "exposure": 10}, {"config": "DAPI", "exposure": 10}],
-    time_plan={"interval": 0.1, "loops": 20},
-    # z_plan={"range": 2, "step": 1},
-    axis_order="tpcz",
+    channels=[{"config": "FITC", "exposure": 1}, {"config": "DAPI", "exposure": 1}],
+    # time_plan={"interval": 2, "loops": 10},
     )
+
     mmcore.run_mda(sequence)
+
+    # ch = ChannelBox(Channel(config="FITC"))
+    # ch.show()
+
     sys.exit(app.exec_())

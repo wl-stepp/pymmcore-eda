@@ -9,7 +9,7 @@ mmcore = CMMCorePlus.instance()
 mmcore.loadSystemConfiguration()
 
 DIMENSIONS = ["c", "z", "t", "p", "g"]
-CAPACITY = int(10E8)
+CAPACITY = int(30E8)
 
 def complement_indices(event):
     indeces = dict(copy.deepcopy(dict(event.index)))
@@ -20,16 +20,11 @@ def complement_indices(event):
 
 
 class BufferedDataStore(BufferedArray):
+    frame_ready = Signal(MDAEvent)
 
-    frame_ready = Signal(int, tuple, MDAEvent)
-
-    def __new__(self, create: bool = True, *args, **kwargs):
-        try:
-            self.name = kwargs['name']
-        except:
-            pass
-        return super().__new__(BufferedDataStore, capacity=CAPACITY, dtype=np.uint16, create=create,
-                               *args, **kwargs)
+    def __new__(self, *args, **kwargs):
+        return super().__new__(BufferedDataStore, *args, capacity=CAPACITY, dtype=np.uint16,
+                                **kwargs)
 
     def __init__(self, *args, **kwargs):
         super().__init__()
@@ -52,7 +47,7 @@ class BufferedDataStore(BufferedArray):
             for i, app in enumerate(diff):
                 self.indeces_to_idx.append(i, app)
         self.put(img)
-        self.frame_ready.emit(idx, img.shape, event)
+        self.frame_ready.emit(event)
 
     def get_frame(self, indeces: list):
         width, height, index = self.indeces_to_idx[*indeces]
@@ -60,20 +55,12 @@ class BufferedDataStore(BufferedArray):
         return np.reshape(self[index:index1], [width, height])
 
 
-
-    # def __getitem__(self, key):
-    #     print(key)
-    #     idxs = self.indeces_to_idx[key]
-    #     print(idxs)
-    #     return self.get_frame(idxs[0], idxs[1], idxs[2])
-
-
 if __name__ == "__main__":
     from useq import MDASequence
     import time
     mmcore.setProperty("Camera", "OnCameraCCDXSize", 1024)
     mmcore.setProperty("Camera", "OnCameraCCDYSize", 1024)
-    database = BufferedDataStore()
+    database = BufferedDataStore(create=True)
     mmcore.run_mda(MDASequence(time_plan={"interval": 1, "loops": 3}))
     time.sleep(3)
     print(database.get_frame([0, 0, 1]).shape)

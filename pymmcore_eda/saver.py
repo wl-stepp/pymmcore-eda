@@ -1,7 +1,7 @@
 from qtpy import QtWidgets, QtCore
 from event_receiver import QEventConsumer, QEventReceiver
 from useq import MDASequence
-from datastore import DataStore
+from datastore import BufferedDataStore
 from pathlib import Path
 import tifffile
 import os

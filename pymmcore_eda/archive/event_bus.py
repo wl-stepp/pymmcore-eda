@@ -1,11 +1,10 @@
 
 from useq import MDASequence, MDAEvent
-from pymmcore_eda.datastore import BufferedDataStore
+from pymmcore_eda.buffered_datastore import BufferedDataStore
 from pymmcore_plus import CMMCorePlus
 import sys
 import multiprocessing
 from psygnal import Signal
-
 
 mmcore = CMMCorePlus.instance()
 mmcore.loadSystemConfiguration()
@@ -26,18 +25,17 @@ class EventBus:
             mmcore.mda.events.sequenceStarted.connect(self.on_sequence_start)
             self.datastore.frame_ready.connect(self.on_frame_ready)
 
-    def on_frame_ready(self, idx: int, shape: tuple, event:MDAEvent):
-        self.event_queue.put({"name": "frame_ready", "buffer_idx": idx, "shape": shape,
-                              "index": event.index})
+    def on_frame_ready(self, event:MDAEvent):
+        self.event_queue.put({"name": "frame_ready", "yaml": event.yaml()})
 
     def on_sequence_start(self, sequence: MDASequence):
-        self.event_queue.put({"name": "sequence_started", "dict": sequence.dict()})
+        self.event_queue.put({"name": "sequence_started", "yaml": sequence.yaml()})
 
     def closeEvent(self):
         pass
 
 
-    class Listener:
+    class Listener():
         sequence_started = Signal(MDASequence)
         frame_ready = Signal(int, tuple, dict)
 

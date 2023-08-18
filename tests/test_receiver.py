@@ -1,9 +1,9 @@
 import multiprocessing
 import time
 
-from pymmcore_eda.event_bus import EventBus
+from pymmcore_eda.archive.event_bus import EventBus
 from pymmcore_plus import CMMCorePlus
-from pymmcore_eda.datastore import DataStore
+from pymmcore_eda.buffered_datastore import BufferedDataStore
 from useq import MDASequence
 from pymmcore_eda.event_receiver import QEventReceiver
 
@@ -17,10 +17,10 @@ sequence = MDASequence(
     )
 
 def test_receiver(qtbot):
-    datastore = DataStore(name="testing_buffer")
+    datastore = BufferedDataStore(create=True)
     queue = multiprocessing.Queue()
-    event_bus = EventBus(datastore, queue)
-    receiver = QEventReceiver(queue, datastore.name)
+    eventb_bus =  EventBus(datastore, event_queue = queue)
+    receiver = QEventReceiver(queue)
     mmcore.run_mda(sequence)
     with qtbot.waitSignal(receiver.listener.sequence_started, timeout=5000):
         pass
@@ -28,5 +28,5 @@ def test_receiver(qtbot):
         pass
     time.sleep(2)
     assert queue.empty() # Should have been received and popped by the EventReceiver
-    assert receiver.datastore[0] != 0
+    assert datastore[0] != 0
     datastore.close()

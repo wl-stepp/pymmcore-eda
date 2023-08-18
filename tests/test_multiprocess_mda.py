@@ -1,14 +1,14 @@
 from multiprocessing import Process, Queue
 from qtpy import QtWidgets
-from event_bus import EventBus
+from pymmcore_eda.archive.event_bus import EventBus
 import sys
 from pymmcore_plus import CMMCorePlus
 from useq import MDASequence
-from datastore import DataStore
+from pymmcore_eda.buffered_datastore import BufferedDataStore
 import time
-from event_receiver import QEventReceiver
-from canvas import Canvas
-from saver import Saver
+from pymmcore_eda.event_receiver import QEventReceiver
+from pymmcore_eda.canvas import Canvas
+from pymmcore_eda.saver import Saver
 
 
 mmcore = CMMCorePlus.instance()
@@ -19,16 +19,16 @@ mmcore.loadSystemConfiguration()
 
 
 def check_buffer(name, event_queue: Queue):
-    datastore = DataStore(sequence, create=False, name=name)
+    datastore = BufferedDataStore(sequence, create=False, name=name)
     while True:
         print(event_queue.get(timeout=500))
         print(datastore[0])
 
-def check_receiver(queue: Queue, buffer_name: str):
+def check_receiver(queue: Queue):
     app = QtWidgets.QApplication(sys.argv)
-    event_receiver = QEventReceiver(queue, buffer_name)
-    canvas = Canvas(event_receiver)
-    canvas.show()
+    event_receiver = QEventReceiver(queue)
+    # canvas = Canvas(event_receiver)
+    # canvas.show()
 
     sys.exit(app.exec_())
 
@@ -45,8 +45,8 @@ def check_saver(queue: Queue, buffer_name: str):
 if __name__ == "__main__":
 
     event_queue = Queue()
-    datastore = DataStore(create=True, name="test_buffer")
-    p = Process(target=check_receiver, args=([event_queue, "test_buffer"]))
+    datastore = BufferedDataStore(create=True)
+    p = Process(target=check_receiver, args=([event_queue]))
     p.start()
     time.sleep(7)
     event_bus = EventBus(datastore, event_queue = event_queue)
