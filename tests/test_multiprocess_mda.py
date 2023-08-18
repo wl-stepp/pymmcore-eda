@@ -9,13 +9,17 @@ import time
 from pymmcore_eda.event_receiver import QEventReceiver
 from pymmcore_eda.canvas import Canvas
 from pymmcore_eda.saver import Saver
-
+from pymmcore_eda.event_sender import EventSender
 
 mmcore = CMMCorePlus.instance()
 mmcore.loadSystemConfiguration()
 
 
-
+sequence = MDASequence(
+    channels=[{"config": "DAPI", "exposure": 100}, {"config": "FITC", "exposure": 100}],
+    time_plan={"interval": 0.5, "loops":5},
+    axis_order="tpcz",
+    )
 
 
 def check_buffer(name, event_queue: Queue):
@@ -41,18 +45,23 @@ def check_saver(queue: Queue, buffer_name: str):
     sys.exit(app.exec_())
 
 
+def run_acquisition(queue: Queue):
+    datastore = BufferedDataStore(create=True)
+    event_sender = EventSender(datastore, queue)
+    mmcore.run_mda(sequence, block=True)
+
+
+def receiver():
+    queue = Queue()
+
+    receiver = QEventReceiver(queue)
+    p = Process(target=run_acquisition, args=([queue]))
+    p.start()
+
+
+
+
 
 if __name__ == "__main__":
 
-    event_queue = Queue()
-    datastore = BufferedDataStore(create=True)
-    p = Process(target=check_receiver, args=([event_queue]))
-    p.start()
-    time.sleep(7)
-    event_bus = EventBus(datastore, event_queue = event_queue)
-    sequence = MDASequence(
-    channels=[{"config": "DAPI", "exposure": 100}, {"config": "FITC", "exposure": 100}],
-    time_plan={"interval": 0.5, "loops":5},
-    axis_order="tpcz",
-    )
-    mmcore.run_mda(sequence)
+    receiver()

@@ -55,6 +55,7 @@ class QEventListener(QtCore.QObject):
                     print("STOP EventListener")
                     break
                 case "frame_ready":
+                    print("FRAME READY in Listener")
                     seq_dict = yaml.load(event["yaml"], Loader=yaml.FullLoader)
                     self.frame_ready.emit(MDAEvent().model_validate(seq_dict))
                 case "sequence_started":
