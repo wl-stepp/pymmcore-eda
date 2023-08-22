@@ -27,13 +27,14 @@ CMAPS = [color.Colormap([[0, 0, 0], [1, 1, 0]]), color.Colormap([[0, 0, 0], [1, 
          color.Colormap([[0, 0, 0], [0, 1, 0]]), color.Colormap([[0, 0, 0], [0, 0, 1]])]
 
 class Canvas(QEventConsumer):
-    """A canvas to follow MDA acquisitions started by MDASequence events"""
+    """A canvas to follow MDA acquisitions started by MDASequence events. Works for remote and local
+    datastores. QEventCosumer handles the connection to the correct events for each version."""
     _slider_settings = QtCore.Signal(dict)
     _new_channel = QtCore.Signal(int, str)
 
     def __init__(self, event_receiver: QEventReceiver|EventBus|None = None,
                  datastore = None, *args, **kwargs):
-        super().__init__(event_receiver)
+        super().__init__(event_receiver, datastore=datastore)
         self._clim = 'auto'
         self.display_index = {dim: 0 for dim in DIMENSIONS}
 
@@ -46,16 +47,9 @@ class Canvas(QEventConsumer):
         self.layout().addWidget(self.info_bar)
 
         self._create_sliders()
-        try:
-            self.listener.sequence_started.connect(self.on_sequence_start)
-        except AttributeError:
-            # MMCore directly, connect to the camelCase
-            self.listener.sequenceStarted.connect(self.on_sequence_start)
-        if datastore is not None:
-            self.datastore = datastore
-            self.datastore.frame_ready.connect(self.on_frame_ready)
-        else:
-            self.listener.frame_ready.connect(self.on_frame_ready)
+
+        self.events.sequence_started.connect(self.on_sequence_start)
+        self.events.frame_ready.connect(self.on_frame_ready)
 
         self._new_channel.connect(self._handle_chbox_visibility)
         self.images = []
@@ -309,7 +303,7 @@ if __name__ == "__main__":
     mmcore.setProperty("Camera", "OnCameraCCDYSize", 2048)
     mmcore.setProperty("Camera", "StripeWidth", 0.8)
     app = QtWidgets.QApplication(sys.argv)
-    datastore = DataStore([2048, 2048, 2, 1, 3])
+    datastore = QDataStore([2048, 2048, 2, 1, 3])
     event_bus = EventBus(datastore)
     w = Canvas(event_bus)
     w.show()

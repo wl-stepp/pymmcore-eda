@@ -41,7 +41,7 @@ class QDataStore(QEventConsumer):
             self.array[:, :, *id_list] = deepcopy(np.reshape(self.remote_datastore[index:index1],
                                                              [shape[0], shape[1]]))
         except IndexError:
-            self.correct_shape(indices)
+            self.correct_shape(self, indices)
             self.new_frame(event)
             return
         self.frame_ready.emit(event)
@@ -67,16 +67,18 @@ class QLocalDataStore(QtCore.QObject):
     """DataStore that connects directly to the mmcore frameReady event and saves the data for
     a consumer like Canvas to show it."""
     frame_ready = QtCore.Signal(MDAEvent)
-    def __init__(self, shape: tuple, dtype: npt.DTypeLike = np.int16, *args, **kwargs):
+    def __init__(self, shape: tuple, dtype: npt.DTypeLike = np.int16, *args,
+                 correct_shape = correct_shape, **kwargs):
         super().__init__(*args, **kwargs)
         self.dtype = np.dtype(dtype)
         self.array = np.ndarray(shape, dtype=self.dtype, *args, **kwargs)
+        self.correct_shape = correct_shape
         setattr(self, "complement_indices", complement_indices)
 
         self.listener = self.EventListener()
         self.listener.start()
         self.listener.frame_ready.connect(self.new_frame)
-        setattr(self, "correct_shape", correct_shape)
+
 
     class EventListener(QtCore.QThread):
         "Receive events in a separate thread"
@@ -88,14 +90,18 @@ class QLocalDataStore(QtCore.QObject):
         def on_frame_ready(self, img: np.ndarray, event: MDAEvent):
             self.frame_ready.emit(img, event)
 
+        def closeEvent(self, event):
+            super().exit()
+            event.accept()
+
     def new_frame(self, img: np.ndarray, event: MDAEvent):
         self.shape = img.shape
         indices = self.complement_indices(event)
-        img = img*(indices["t"] + 1)//10
+        # img = img*(indices["t"] + 1)//10
         try:
             self.array[:, :, indices["c"], indices["z"], indices["t"]] = img
         except IndexError:
-            self.correct_shape(indices)
+            self.correct_shape(self, indices)
             self.new_frame(img, event)
             return
         self.frame_ready.emit(event)

@@ -71,16 +71,28 @@ class QEventListener(QtCore.QObject):
 
 class QEventConsumer(QtWidgets.QWidget):
     def __init__(self, event_receiver: QEventReceiver|EventBus|CMMCorePlus|None = None, *args,
-                 **kwargs):
+                 datastore = None, **kwargs):
         super().__init__()
+        self.events = QtCore.QObject()
         if isinstance(event_receiver, CMMCorePlus):
             self.listener = event_receiver.mda.events
+            self.event_receiver = datastore.listener
+            self.events.sequence_started = self.listener.sequenceStarted
+            self.events.frame_ready = self.listener.frameReady
         else:
+            self.event_receiver = event_receiver
             self.event_receiver = QEventReceiver() if event_receiver is None else event_receiver
             self.listener = event_receiver.listener
+            self.events.sequence_started = self.listener.sequence_started
+            self.events.frame_ready = self.listener.frame_ready
+        print("DATASTORE", datastore)
+        if datastore is not None:
+            print("Datastore set")
+            self.datastore = datastore
+            self.events.frame_ready = self.datastore.frame_ready
 
     def closeEvent(self, event):
-        self.event_receiver.closeEvent()
+        self.event_receiver.closeEvent(event)
         time.sleep(1)
         self.hide()
         super().closeEvent(event)

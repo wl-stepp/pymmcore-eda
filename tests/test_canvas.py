@@ -26,6 +26,7 @@ def run_acquisition(queue: multiprocessing.Queue, out_conn: multiprocessing.Pipe
     time.sleep(2)
     mmcore.run_mda(sequence, block=True)
 
+
 def test_remote(qtbot):
     queue = multiprocessing.Queue()
     receiver = QEventReceiver(queue)
@@ -45,8 +46,9 @@ def test_remote(qtbot):
     assert canvas.images[0]._data.shape == (512, 512)
     assert canvas.images[0]._data.flatten()[0] != 0
 
+
 def test_local(qtbot):
-    datastore = QLocalDataStore(shape=[512, 512, 10, 10, 10])
+    datastore = QLocalDataStore(shape=[512, 512, 10, 10, 20])
     canvas = Canvas(mmcore, datastore)
     canvas.show()
     qtbot.addWidget(canvas)
