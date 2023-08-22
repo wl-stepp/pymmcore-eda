@@ -1,18 +1,15 @@
 from vispy import app, scene, color
 from pymmcore_plus import CMMCorePlus
-from useq import MDASequence, Channel, MDAEvent
+from useq import MDASequence, Channel
 import sys
-from qtpy import QtWidgets, QtCore, QtGui
-from copy import deepcopy
+from qtpy import QtWidgets, QtCore
+
 
 from pymmcore_eda.event_receiver import QEventConsumer, QEventReceiver
 import numpy as np
-import numpy.typing as npt
 import copy
-import time
-from pathlib import Path
 from pymmcore_eda.archive.event_bus import EventBus
-from pymmcore_eda.buffered_datastore import BufferedDataStore, complement_indices
+
 from pymmcore_eda.utility.index_slider import QLabeledSlider
 from pymmcore_eda.utility.range_slider import RangeSlider
 from pymmcore_eda.utility.color_picker import QColorComboBox
@@ -34,9 +31,9 @@ class Canvas(QEventConsumer):
     _slider_settings = QtCore.Signal(dict)
     _new_channel = QtCore.Signal(int, str)
 
-    def __init__(self, event_receiver: QEventReceiver|EventBus|None = None, *args, **kwargs):
+    def __init__(self, event_receiver: QEventReceiver|EventBus|None = None,
+                 datastore = None, *args, **kwargs):
         super().__init__(event_receiver)
-
         self._clim = 'auto'
         self.display_index = {dim: 0 for dim in DIMENSIONS}
 
@@ -49,8 +46,16 @@ class Canvas(QEventConsumer):
         self.layout().addWidget(self.info_bar)
 
         self._create_sliders()
-        self.listener.sequence_started.connect(self.on_sequence_start)
-        self.listener.frame_ready.connect(self.on_frame_ready)
+        try:
+            self.listener.sequence_started.connect(self.on_sequence_start)
+        except AttributeError:
+            # MMCore directly, connect to the camelCase
+            self.listener.sequenceStarted.connect(self.on_sequence_start)
+        if datastore is not None:
+            self.datastore = datastore
+            self.datastore.frame_ready.connect(self.on_frame_ready)
+        else:
+            self.listener.frame_ready.connect(self.on_frame_ready)
 
         self._new_channel.connect(self._handle_chbox_visibility)
         self.images = []
@@ -210,12 +215,13 @@ class Canvas(QEventConsumer):
             self.display_image(frame, c)
         self._canvas.update()
 
-    def on_frame_ready(self, buffer_pos: int, shape: tuple, index):
+    def on_frame_ready(self, event):
+        indices = self.complement_indices(event.index)
+        img = self.datastore.get_frame([indices["c"], indices["z"], indices["t"]])
+        shape = img.shape
         self.width, self.height = shape
-        indices = self.complement_indices(index)
         if sum(indices.values()) == 0:
             self.view.camera.rect = ((0, 0, *shape))
-        img = self.datastore.get_frame([indices["c"], indices["z"], indices["t"]])
         self.display_image(img, indices["c"])
         self._set_sliders(indices)
         slider = self.channel_boxes[indices["c"]].slider
@@ -294,56 +300,6 @@ class ChannelBox(QtWidgets.QFrame):
         self.clicked.emit(self.channel)
 
 
-class DataStore(QtCore.QObject):
-    frame_ready = QtCore.Signal(int, tuple, MDAEvent)
-    """Store to have the data ready for a canvas to display."""
-    def __init__(self, shape: tuple, dtype: npt.DTypeLike = np.int16, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.dtype = np.dtype(dtype)
-        self.array = np.ndarray(shape, dtype=self.dtype, *args, **kwargs)
-        setattr(self, "complement_indices", complement_indices)
-
-        self.listener = self.EventListener()
-        self.listener.start()
-        self.listener.frame_ready.connect(self.new_frame)
-
-    class EventListener(QtCore.QThread):
-        "Receive events in a separate thread"
-        frame_ready = QtCore.Signal(np.ndarray, MDAEvent)
-        def __init__(self):
-            super().__init__()
-            mmcore.mda.events.frameReady.connect(self.on_frame_ready)
-
-        def on_frame_ready(self, img: np.ndarray, event: MDAEvent):
-            self.frame_ready.emit(img, event)
-
-    def new_frame(self, img: np.ndarray, event: MDAEvent):
-        self.shape = img.shape
-        indices = self.complement_indices(event)
-        img = img*(indices["t"] + 1)//10
-        try:
-            self.array[:, :, indices["c"], indices["z"], indices["t"]] = img
-        except IndexError:
-            self.correct_shape(indices)
-            self.new_frame(img, event)
-            return
-        self.frame_ready.emit(0, self.shape, event)
-
-    def correct_shape(self, indices: tuple) -> None:
-        "The initialised shape does not fit the data, extend the array."
-        min_shape = [indices['c'], indices['z'], indices['t']]
-        diff = [x - y for x, y in zip(min_shape, self.array.shape[2:])]
-        for i, app in enumerate(diff):
-            if app >= 0:
-                if i == 2: # handle time differently, double the size
-                    app = self.array.shape[4]
-                append_shape = [*self.array.shape[:i+2], app + 1, *self.array.shape[i+3:]]
-                self.array = np.append(self.array, np.zeros(append_shape, self.array.dtype),
-                                       axis=i+2)
-                print("new shape", self.array.shape)
-
-    def get_frame(self, key):
-        return self.array[:, :, *key]
 
 
 

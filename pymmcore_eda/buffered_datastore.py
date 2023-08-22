@@ -20,7 +20,7 @@ def complement_indices(event):
 
 
 class BufferedDataStore(BufferedArray):
-    frame_ready = Signal(MDAEvent)
+    frame_ready = Signal(MDAEvent, tuple, int)
 
     def __new__(self, *args, **kwargs):
         return super().__new__(BufferedDataStore, *args, capacity=CAPACITY, dtype=np.uint16,
@@ -30,12 +30,13 @@ class BufferedDataStore(BufferedArray):
         super().__init__()
         setattr(self, "complement_indices", complement_indices)
         #TODO: This limits the sizes of the axes
-        self.indeces_to_idx = np.ndarray([3,1,1000, 3], np.uint64)
+        self.indeces_to_idx = np.zeros([3,1,1000, 3], np.uint64)
         mmcore.mda.events.frameReady.connect(self.new_frame)
 
     def new_frame(self, img: np.ndarray, event: MDAEvent):
         idx = self._write_idx
         indices = self.complement_indices(event)
+        print(indices)
         try:
             self.indeces_to_idx[indices['c'], indices['z'], indices['t']] = (int(img.shape[0]),
                                                                             int(img.shape[1]),
@@ -46,8 +47,10 @@ class BufferedDataStore(BufferedArray):
             diff = [x - y for x, y in zip(new_min_shape, shape_now)]
             for i, app in enumerate(diff):
                 self.indeces_to_idx.append(i, app)
+            print("New shape for indeces:", self.indeces_to_idx.shape)
         self.put(img)
-        self.frame_ready.emit(event)
+        print("BufferedDataStore", self.indeces_to_idx[indices['c'], indices['z'], indices['t']])
+        self.frame_ready.emit(event, img.shape, idx)
 
     def get_frame(self, indeces: list):
         width, height, index = self.indeces_to_idx[*indeces]

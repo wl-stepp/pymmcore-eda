@@ -2,6 +2,7 @@ import multiprocessing
 from _queue import Empty
 from pymmcore_eda.buffered_datastore import BufferedDataStore
 from pymmcore_eda.archive.event_bus import EventBus
+from pymmcore_plus import CMMCorePlus
 from qtpy import QtWidgets, QtCore
 from useq import MDASequence, MDAEvent
 import time
@@ -11,7 +12,7 @@ class QEventReceiver(QtCore.QObject):
 
     stop_thread = QtCore.Signal()
 
-    def __init__(self, queue: multiprocessing.Queue):
+    def __init__(self, queue: multiprocessing.Queue, auto_start: bool = True):
         super().__init__()
         self.queue = queue
         self.event_thread = QtCore.QThread()
@@ -19,7 +20,8 @@ class QEventReceiver(QtCore.QObject):
         self.listener.moveToThread(self.event_thread)
         self.event_thread.started.connect(self.listener.start)
 
-        self.event_thread.start()
+        if auto_start:
+            self.event_thread.start()
 
     def stop(self):
         pass
@@ -29,7 +31,7 @@ class QEventReceiver(QtCore.QObject):
 
 class QEventListener(QtCore.QObject):
     sequence_started = QtCore.Signal(MDASequence)
-    frame_ready = QtCore.Signal(MDAEvent)
+    frame_ready = QtCore.Signal(MDAEvent, tuple, int)
     def __init__(self, receiver: QEventReceiver,
                  queue: multiprocessing.Queue):
         super().__init__()
@@ -55,9 +57,10 @@ class QEventListener(QtCore.QObject):
                     print("STOP EventListener")
                     break
                 case "frame_ready":
-                    print("FRAME READY in Listener")
                     seq_dict = yaml.load(event["yaml"], Loader=yaml.FullLoader)
-                    self.frame_ready.emit(MDAEvent().model_validate(seq_dict))
+                    my_event = MDAEvent().model_validate(seq_dict)
+                    print("FRAME READY in Listener", my_event.__class__)
+                    self.frame_ready.emit(my_event, tuple(event["shape"]), int(event["index"]))
                 case "sequence_started":
                     seq_dict = yaml.load(event["yaml"], Loader=yaml.FullLoader)
                     self.sequence_started.emit(MDASequence().model_validate(seq_dict))
@@ -67,11 +70,14 @@ class QEventListener(QtCore.QObject):
 
 
 class QEventConsumer(QtWidgets.QWidget):
-    def __init__(self, event_receiver: QEventReceiver|EventBus|None = None, *args, **kwargs):
+    def __init__(self, event_receiver: QEventReceiver|EventBus|CMMCorePlus|None = None, *args,
+                 **kwargs):
         super().__init__()
-        self.event_receiver = QEventReceiver() if event_receiver is None else event_receiver
-        # self.datastore = self.event_receiver.datastore
-        self.listener = event_receiver.listener
+        if isinstance(event_receiver, CMMCorePlus):
+            self.listener = event_receiver.mda.events
+        else:
+            self.event_receiver = QEventReceiver() if event_receiver is None else event_receiver
+            self.listener = event_receiver.listener
 
     def closeEvent(self, event):
         self.event_receiver.closeEvent()

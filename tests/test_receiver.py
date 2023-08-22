@@ -15,7 +15,7 @@ mmcore.loadSystemConfiguration()
 
 sequence = MDASequence(
     channels=[{"config": "DAPI", "exposure": 10}],
-    time_plan={"interval": 0, "loops":2},
+    time_plan={"interval": 0.5, "loops":20},
     axis_order="tpcz",
     )
 
@@ -52,7 +52,7 @@ def test_multiprocess(qtbot):
         pass
     with qtbot.waitSignal(receiver.listener.frame_ready, timeout=5000):
         pass
-    with qtbot.waitSignal(receiver.listener.frame_ready, timeout=500):
+    with qtbot.waitSignal(receiver.listener.frame_ready, timeout=5000):
         pass
 
 

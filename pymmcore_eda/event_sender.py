@@ -23,8 +23,9 @@ class EventSender:
         mmcore.mda.events.sequenceStarted.connect(self.on_sequence_start)
         self.datastore.frame_ready.connect(self.on_frame_ready)
 
-    def on_frame_ready(self, event:MDAEvent):
-        self.event_queue.put({"name": "frame_ready", "yaml": event.yaml()})
+    def on_frame_ready(self, event:MDAEvent, shape: tuple, index: int):
+        self.event_queue.put({"name": "frame_ready", "yaml": event.yaml(), "shape": shape,
+                              "index": index})
 
     def on_sequence_start(self, sequence: MDASequence):
         self.event_queue.put({"name": "sequence_started", "yaml": sequence.yaml()})
