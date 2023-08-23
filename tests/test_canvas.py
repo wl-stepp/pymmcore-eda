@@ -8,7 +8,8 @@ from pymmcore_plus import CMMCorePlus
 import time
 from useq import MDASequence
 
-from qtpy import QtCore
+
+
 
 
 sequence = MDASequence(
