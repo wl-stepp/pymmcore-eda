@@ -1,9 +1,10 @@
 from vispy import app, scene, color
+from vispy.app import timer
 from pymmcore_plus import CMMCorePlus
 from useq import MDASequence, Channel
 import sys
-from qtpy import QtWidgets, QtCore
-
+from qtpy import QtWidgets, QtCore, QtGui
+import time
 
 from pymmcore_eda.event_receiver import QEventConsumer, QEventReceiver
 import numpy as np
@@ -21,7 +22,7 @@ mmcore = CMMCorePlus.instance()
 mmcore.loadSystemConfiguration()
 
 DIMENSIONS = ["c", "z", "t", "p", "g"]
-AUTOCLIM_RATE = 2 #Hz   0 = inf
+AUTOCLIM_RATE = 0.01 #Hz   0 = inf
 CMAPS = [color.Colormap([[0, 0, 0], [1, 1, 0]]), color.Colormap([[0, 0, 0], [1, 0, 1]]),
          color.Colormap([[0, 0, 0], [0, 1, 1]]), color.Colormap([[0, 0, 0], [1, 0, 0]]),
          color.Colormap([[0, 0, 0], [0, 1, 0]]), color.Colormap([[0, 0, 0], [0, 0, 1]])]
@@ -54,9 +55,9 @@ class Canvas(QEventConsumer):
         self._new_channel.connect(self._handle_chbox_visibility)
         self.images = []
 
-        self.display_timer = QtCore.QTimer()
-        self.display_timer.setInterval(17) # 60 fps
-        self.display_timer.timeout.connect(self.on_display_timer)
+        self.display_timer = timer.Timer(interval=0.02, connect=self.on_display_timer)
+        self.t0 = 0
+        # self.display_timer.connect(self.on_display_timer)
 
         self.clim_timer = QtCore.QTimer()
         self.clim_timer.setInterval(int(1000 // AUTOCLIM_RATE))
@@ -64,7 +65,8 @@ class Canvas(QEventConsumer):
 
     def construct_canvas(self):
         self._clims = "auto"
-        self._canvas = scene.SceneCanvas(keys="interactive", size=(512, 512), parent=self)
+        self._canvas = scene.SceneCanvas(keys="interactive", size=(512, 512), parent=self,
+                                         autoswap=False)
         self._canvas._send_hover_events = True
         self._canvas.events.mouse_move.connect(self.on_mouse_move)
         self.view = self._canvas.central_widget.add_view()
@@ -84,7 +86,9 @@ class Canvas(QEventConsumer):
         for i in range(nc):
             image = scene.visuals.Image(np.zeros(self._canvas.size).astype(array.dtype),
                                         parent=self.view.scene, cmap=CMAPS[i], clim=[0,1])
-            image.set_gl_state(preset="additive")
+            if i > 0:
+                print("Image", i, "additive")
+                # image.set_gl_state(preset="additive")
             self.images.append(image)
             self.current_channel = i
             self._new_channel.emit(i, sequence.channels[i].config)
@@ -190,7 +194,8 @@ class Canvas(QEventConsumer):
         for slider in self.sliders:
             slider.valueChanged[int, str].disconnect()
         self.display_timer.start()
-        self.clim_timer.start()
+        print(self.display_timer.running)
+        # self.clim_timer.start()
 
     def on_slider_release(self):
         self.display_timer.stop()
@@ -200,14 +205,20 @@ class Canvas(QEventConsumer):
         for slider in self.sliders:
             slider.valueChanged[int, str].connect(self.on_display_timer)
 
-    def on_display_timer(self):
+    def on_display_timer(self, _=None):
+        print(1/(time.perf_counter() - self.t0))
+        self.t0 = time.perf_counter()
+        old_index = self.display_index.copy()
         for slider in self.sliders:
             self.display_index[slider.name] = slider.value()
+        if old_index == self.display_index:
+            return
+
         for c in range(self.sequence.sizes['c']):
             frame = self.datastore.get_frame([c, self.display_index['z'],
                                               self.display_index['t']])
             self.display_image(frame, c)
-        self._canvas.update()
+        self.images[0].update()
 
     def on_frame_ready(self, event):
         indices = self.complement_indices(event.index)
@@ -231,8 +242,9 @@ class Canvas(QEventConsumer):
             slider.setValue(indices[slider.name])
             slider.blockSignals(False)
 
-    def display_image(self, img: [scene.visuals.Image], channel=0):
+    def display_image(self, img: np.ndarray, channel=0):
         self.images[channel].set_data(img)
+        # self.images[channel].update()
 
     def on_clim_timer(self, channel=None):
         channel_list = list(range(len(self.channel_boxes))) if channel is None else [channel]
@@ -298,24 +310,23 @@ class ChannelBox(QtWidgets.QFrame):
 
 
 if __name__ == "__main__":
-    import itertools
-    mmcore.setProperty("Camera", "OnCameraCCDXSize", 2048)
-    mmcore.setProperty("Camera", "OnCameraCCDYSize", 2048)
-    mmcore.setProperty("Camera", "StripeWidth", 0.8)
-    app = QtWidgets.QApplication(sys.argv)
-    datastore = QDataStore([2048, 2048, 2, 1, 3])
-    event_bus = EventBus(datastore)
-    w = Canvas(event_bus)
+    size = 2048
+    from pymmcore_eda.local_datastore import QLocalDataStore
+    mmcore.setProperty("Camera", "OnCameraCCDXSize", size)
+    mmcore.setProperty("Camera", "OnCameraCCDYSize", size)
+    mmcore.setProperty("Camera", "StripeWidth", 0.3)
+    # qapp = QtWidgets.QApplication(sys.argv)
+    app.create()
+    datastore = QLocalDataStore([size, size, 2, 1, 3])
+
+    w = Canvas(mmcore, datastore=datastore)
     w.show()
 
     sequence = MDASequence(
     channels=[{"config": "FITC", "exposure": 1}, {"config": "DAPI", "exposure": 1}],
-    # time_plan={"interval": 2, "loops": 10},
+    time_plan={"interval": 0.5, "loops": 20},
     )
 
     mmcore.run_mda(sequence)
-
-    # ch = ChannelBox(Channel(config="FITC"))
-    # ch.show()
-
-    sys.exit(app.exec_())
+    # sys.exit(qapp.exec_())
+    app.run()
