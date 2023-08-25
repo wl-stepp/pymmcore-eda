@@ -47,10 +47,6 @@ class Canvas(QEventConsumer):
         self.info_bar.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
         self.layout().addWidget(self.info_bar)
 
-        self.play_timer = app.Timer()
-        # self.play_timer.setInterval(20)
-        self.play_timer.connect(self.on_play_timer)
-
         self._create_sliders()
 
         self.events.sequence_started.connect(self.on_sequence_start)
@@ -73,14 +69,13 @@ class Canvas(QEventConsumer):
         self._clims = "auto"
         self._canvas = scene.SceneCanvas( size=(512, 512), parent=self,
                                          autoswap=False, vsync=True, keys=None)
-        # self._canvas.context.set_depth_func('lequal')
         self._canvas._send_hover_events = True
         self._canvas.events.mouse_move.connect(self.on_mouse_move)
         self.view = self._canvas.central_widget.add_view()
         self.view.camera = scene.PanZoomCamera(aspect=1)
         self.view.camera.flip = (0, 1, 0)
         self.view.camera.set_range()
-        # self._canvas.show()
+
 
     def on_sequence_start(self, sequence: MDASequence):
         self.sequence = sequence
@@ -162,7 +157,6 @@ class Canvas(QEventConsumer):
                 continue
             slider = LabeledVisibilitySlider(dim,  orientation=QtCore.Qt.Horizontal)
             slider.valueChanged[int, str].connect(self.on_display_timer)
-            slider.play.connect(self._start_play_timer)
             slider.sliderPressed.connect(self.on_slider_press)
             slider.sliderReleased.connect(self.on_slider_release)
             self._slider_settings.connect(slider._visibility)
@@ -215,8 +209,6 @@ class Canvas(QEventConsumer):
             slider.valueChanged[int, str].connect(self.on_display_timer)
 
     def on_display_timer(self, _=None):
-        print(1/(time.perf_counter() - self.t0))
-        self.t0 = time.perf_counter()
         old_index = self.display_index.copy()
         for slider in self.sliders:
             self.display_index[slider.name] = slider.value()
@@ -225,26 +217,9 @@ class Canvas(QEventConsumer):
 
         for c in range(self.sequence.sizes['c']):
             frame = self.datastore.get_frame([self.display_index['t'], c, self.display_index['z']])
-
             self.display_image(frame, c)
         self.images[0].update()
 
-    def _start_play_timer(self, playing):
-        if playing:
-            self.play_timer.start(0.01)
-        else:
-            self.play_timer.stop()
-
-
-    def on_play_timer(self, _=None):
-        print(1/(time.perf_counter() - self.t0))
-        self.t0 = time.perf_counter()
-        self.frame += 1
-        self.frame = self.frame % self.sequence.sizes['t']
-        # for c in range(self.sequence.sizes['c']):
-        self.images[0].set_data(self.datastore.array[self.frame, 0, self.display_index['z'], :, : ])
-        self.images[1].set_data(self.datastore.array[self.frame, 1, self.display_index['z'], :, : ])
-        self._canvas.update()
 
     def on_frame_ready(self, event):
         indices = self.complement_indices(event.index)
