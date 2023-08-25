@@ -8,13 +8,12 @@ class QLabeledSlider(QtWidgets.QWidget):
     sliderPressed = QtCore.Signal()
     sliderMoved = QtCore.Signal()
     sliderReleased = QtCore.Signal()
+    play = QtCore.Signal(bool)
 
     def __init__(self, name: str = "", orientation=QtCore.Qt.Horizontal , *args, **kwargs):
         # super().__init__(self, *args, **kwargs)
         super().__init__()
         self.name = name
-
-
 
         self.label = QtWidgets.QLabel()
         self.label.setText(name)
@@ -31,8 +30,12 @@ class QLabeledSlider(QtWidgets.QWidget):
         self.current_value.setAlignment(QtCore.Qt.AlignLeft)
         self.current_value.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
 
+        self.play_btn = QtWidgets.QPushButton("play")
+        self.play_btn.clicked.connect(self.play_clk)
+
         # self.layout = QtWidgets.QHBoxLayout(self)
         self.setLayout(QtWidgets.QHBoxLayout())
+        self.layout().addWidget(self.play_btn)
         self.layout().addWidget(self.label)
         self.layout().addWidget(self.slider)
         self.layout().addWidget(self.current_value)
@@ -42,6 +45,8 @@ class QLabeledSlider(QtWidgets.QWidget):
         self.slider.sliderPressed.connect(self.sliderPressed)
         self.slider.sliderMoved.connect(self.sliderMoved)
         self.slider.sliderReleased.connect(self.sliderReleased)
+        self.playing = False
+
 
     def handle_valueChanged(self, value):
         self.current_value.setText(f"{str(value)}/{str(self.slider.maximum())}")
@@ -61,6 +66,14 @@ class QLabeledSlider(QtWidgets.QWidget):
     def setValue(self, value):
         self.current_value.setText(f"{str(value)}/{str(self.maximum())}")
         self.slider.setValue(value)
+
+    def play_clk(self):
+        if self.playing:
+            self.play_btn.setText("play")
+        else:
+            self.play_btn.setText("stop")
+        self.playing = not self.playing
+        self.play.emit(self.playing)
 
 if __name__ == "__main__":
     import sys

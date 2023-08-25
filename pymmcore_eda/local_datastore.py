@@ -67,7 +67,7 @@ class QLocalDataStore(QtCore.QObject):
     """DataStore that connects directly to the mmcore frameReady event and saves the data for
     a consumer like Canvas to show it."""
     frame_ready = QtCore.Signal(MDAEvent)
-    def __init__(self, shape: tuple, dtype: npt.DTypeLike = np.int16, *args,
+    def __init__(self, shape: tuple, dtype: npt.DTypeLike = np.uint16, *args,
                  correct_shape = correct_shape, **kwargs):
         super().__init__(*args, **kwargs)
         self.dtype = np.dtype(dtype)
@@ -97,9 +97,9 @@ class QLocalDataStore(QtCore.QObject):
     def new_frame(self, img: np.ndarray, event: MDAEvent):
         self.shape = img.shape
         indices = self.complement_indices(event)
-        # img = img*(indices["t"] + 1)//10
+        img = img*(indices["t"] + 1)//10
         try:
-            self.array[:, :, indices["c"], indices["z"], indices["t"]] = img
+            self.array[indices["t"], indices["c"], indices["z"], :, :] = img
         except IndexError:
             self.correct_shape(self, indices)
             self.new_frame(img, event)
@@ -107,4 +107,4 @@ class QLocalDataStore(QtCore.QObject):
         self.frame_ready.emit(event)
 
     def get_frame(self, key):
-        return self.array[:, :, *key]
+        return self.array[ *key, :, :]
