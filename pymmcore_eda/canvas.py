@@ -21,7 +21,7 @@ app.use_app("pyqt6")
 mmcore = CMMCorePlus.instance()
 mmcore.loadSystemConfiguration()
 
-DIMENSIONS = ["c", "z", "t", "p", "g"]
+DIMENSIONS = ["t", "z", "c", "p", "g"]
 AUTOCLIM_RATE = 1 #Hz   0 = inf
 CMAPS = [color.Colormap([[0, 0, 0], [1, 1, 0]]), color.Colormap([[0, 0, 0], [1, 0, 1]]),
          color.Colormap([[0, 0, 0], [0, 1, 1]]), color.Colormap([[0, 0, 0], [1, 0, 0]]),
@@ -55,7 +55,7 @@ class Canvas(QEventConsumer):
         self._new_channel.connect(self._handle_chbox_visibility)
         self.images = []
 
-        self.display_timer = app.Timer(interval=0.02, connect=self.on_display_timer)
+        # self.display_timer = app.Timer(interval=0.02, connect=self.on_display_timer)
         self.t0 = 0
         # self.display_timer.connect(self.on_display_timer)
 
@@ -76,7 +76,6 @@ class Canvas(QEventConsumer):
         self.view.camera.flip = (0, 1, 0)
         self.view.camera.set_range()
 
-
     def on_sequence_start(self, sequence: MDASequence):
         self.sequence = sequence
         self.handle_sliders(sequence)
@@ -88,10 +87,8 @@ class Canvas(QEventConsumer):
         self.images = []
         for i in range(nc):
             image = scene.visuals.Image(np.zeros(self._canvas.size).astype(array.dtype),
-                                        parent=self.view.scene, cmap=CMAPS[i], clim=[0,1],
-                                         interpolation="nearest")
+                                        parent=self.view.scene, cmap=CMAPS[i], clim=[0,1])
             if i > 0:
-                print("Image", i, "additive")
                 image.set_gl_state('additive', depth_test=False)
             self.images.append(image)
             self.current_channel = i
@@ -137,13 +134,10 @@ class Canvas(QEventConsumer):
     def handle_sliders(self, sequence: MDASequence):
         for dim in DIMENSIONS[:3]:
             if sequence.sizes[dim] > 1:
-                self._slider_settings.emit({"index": dim,
-                                            "show": True,
+                self._slider_settings.emit({"index": dim,"show": True,
                                             "max": sequence.sizes[dim] - 1})
             else:
-                self._slider_settings.emit({"index": dim,
-                                            "show": False,
-                                            "max": 1})
+                self._slider_settings.emit({"index": dim, "show": False, "max": 1})
 
     def _create_sliders(self,):
         self.sliders = []
@@ -157,8 +151,8 @@ class Canvas(QEventConsumer):
                 continue
             slider = LabeledVisibilitySlider(dim,  orientation=QtCore.Qt.Horizontal)
             slider.valueChanged[int, str].connect(self.on_display_timer)
-            slider.sliderPressed.connect(self.on_slider_press)
-            slider.sliderReleased.connect(self.on_slider_release)
+            # slider.sliderPressed.connect(self.on_slider_press)
+            # slider.sliderReleased.connect(self.on_slider_release)
             self._slider_settings.connect(slider._visibility)
             self.layout().addWidget(slider)
             slider.hide()
@@ -192,21 +186,6 @@ class Canvas(QEventConsumer):
         except IndexError:
             info = f"[{p[0]}, {p[1]}]"
             self.info_bar.setText(info)
-            pass
-
-    def on_slider_press(self):
-        for slider in self.sliders:
-            slider.valueChanged[int, str].disconnect()
-        self.display_timer.start()
-        self.clim_timer.start()
-
-    def on_slider_release(self):
-        self.display_timer.stop()
-        self.clim_timer.stop()
-        self.on_display_timer()
-        self.on_clim_timer()
-        for slider in self.sliders:
-            slider.valueChanged[int, str].connect(self.on_display_timer)
 
     def on_display_timer(self, _=None):
         old_index = self.display_index.copy()
@@ -214,16 +193,14 @@ class Canvas(QEventConsumer):
             self.display_index[slider.name] = slider.value()
         if old_index == self.display_index:
             return
-
         for c in range(self.sequence.sizes['c']):
-            frame = self.datastore.get_frame([self.display_index['t'], c, self.display_index['z']])
+            frame = self.datastore.get_frame([self.display_index['t'], self.display_index['z'],  c])
             self.display_image(frame, c)
-        self.images[0].update()
-
+        self._canvas.update()
 
     def on_frame_ready(self, event):
         indices = self.complement_indices(event.index)
-        img = self.datastore.get_frame([indices["t"], indices["c"], indices["z"]])
+        img = self.datastore.get_frame([indices["t"], indices["z"], indices["c"]])
         shape = img.shape
         self.width, self.height = shape
         if sum(indices.values()) == 0:
@@ -262,19 +239,6 @@ class Canvas(QEventConsumer):
         return indeces
 
 
-class LabeledVisibilitySlider(QLabeledSlider):
-    def __init__(self, name, *args, **kwargs):
-        super().__init__(name, *args, **kwargs)
-
-    def _visibility(self, settings):
-        if not settings['index'] == self.name:
-            return
-        if settings['show']:
-            self.show()
-        else:
-            self.hide()
-        self.setRange(0, settings['max'])
-
 
 class ChannelBox(QtWidgets.QFrame):
     """Box that represents a channel and gives some way of interaction."""
@@ -308,8 +272,6 @@ class ChannelBox(QtWidgets.QFrame):
 
 
 
-
-
 if __name__ == "__main__":
     size = 2048
     from pymmcore_eda.local_datastore import QLocalDataStore
@@ -319,7 +281,7 @@ if __name__ == "__main__":
     mmcore.setProperty("Camera", "StripeWidth", 0.7)
     qapp = QtWidgets.QApplication(sys.argv)
 
-    datastore = QLocalDataStore([40, 2, 1, size, size])
+    datastore = QLocalDataStore([40, 1, 2, size, size])
     w = Canvas(mmcore, datastore=datastore)
     w.show()
 

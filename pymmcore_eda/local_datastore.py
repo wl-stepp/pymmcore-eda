@@ -30,15 +30,15 @@ class QDataStore(QEventConsumer):
         self.listener.frame_ready.connect(self.new_frame)
         self.remote_datastore = BufferedDataStore(name=remote_datastore_name, create=False)
         setattr(self, "complement_indices", complement_indices)
-        setattr(self, "correct_shape", correct_shape)
+        # setattr(self, "correct_shape", correct_shape)
 
     def new_frame(self, event: MDAEvent, shape: tuple, index: int):
         print("NEW FRAME IN LOCAL STORE", event.index)
         indices = self.complement_indices(event)
-        id_list = [indices["c"], indices["z"], indices["t"]]
+        id_list = [indices["t"], indices["z"], indices["c"]]
         try:
             index1 = index + shape[0]*shape[1]
-            self.array[:, :, *id_list] = deepcopy(np.reshape(self.remote_datastore[index:index1],
+            self.array[*id_list, :, :] = deepcopy(np.reshape(self.remote_datastore[index:index1],
                                                              [shape[0], shape[1]]))
         except IndexError:
             self.correct_shape(self, indices)
@@ -47,19 +47,19 @@ class QDataStore(QEventConsumer):
         self.frame_ready.emit(event)
 
     def get_frame(self, key):
-        return self.array[:, :, *key]
+        return self.array[*key, :, :]
 
 def correct_shape(self, indices: tuple) -> None:
     "The initialised shape does not fit the data, extend the array."
-    min_shape = [indices['c'], indices['z'], indices['t']]
-    diff = [x - y for x, y in zip(min_shape, self.array.shape[2:])]
+    min_shape = [indices["t"], indices["z"], indices["c"]]
+    diff = [x - y for x, y in zip(min_shape, self.array.shape[:-2])]
     for i, app in enumerate(diff):
         if app >= 0:
             if i == 2: # handle time differently, double the size
-                app = self.array.shape[4]
-            append_shape = [*self.array.shape[:i+2], app + 1, *self.array.shape[i+3:]]
+                app = self.array.shape[0]
+            append_shape = [*self.array.shape[:i], app + 1, *self.array.shape[i:]]
             self.array = np.append(self.array, np.zeros(append_shape, self.array.dtype),
-                                    axis=i+2)
+                                    axis=i)
             print("new shape", self.array.shape)
 
 
@@ -99,7 +99,7 @@ class QLocalDataStore(QtCore.QObject):
         indices = self.complement_indices(event)
         img = img*(indices["t"] + 1)//10
         try:
-            self.array[indices["t"], indices["c"], indices["z"], :, :] = img
+            self.array[indices["t"], indices["z"], indices["c"], :, :] = img
         except IndexError:
             self.correct_shape(self, indices)
             self.new_frame(img, event)

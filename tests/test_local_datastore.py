@@ -43,7 +43,7 @@ def test_receive_from_remote(qtbot):
 
     # Get the datastore name from the second process and generate the local variant of it
     name = in_conn.recv()
-    datastore = QDataStore(receiver, name, shape=[512, 512, 10, 10, 10])
+    datastore = QDataStore(receiver, name, shape=[10, 10, 10, 512, 512])
 
     if qtbot:
         with qtbot.waitSignal(receiver.listener.sequence_started, timeout=5000):

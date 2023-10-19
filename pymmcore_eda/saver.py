@@ -36,7 +36,7 @@ class Saver(QEventConsumer):
         os.makedirs(fname, exist_ok=True)
         array = self.datastore.array
         tifffile.imwrite(fname/'images.ome.tif',
-                         np.moveaxis(array, [0, 1, 2, 3, 4], [4, 3, 2, 1, 0]),
+                         array,
                          imagej=True)
         mmcore.saveSystemState(str(fname/'mm_data.txt'))
         self.save_location = str(fname.parent)

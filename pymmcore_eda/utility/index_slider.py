@@ -41,7 +41,7 @@ class QLabeledSlider(QtWidgets.QWidget):
         self.layout().addWidget(self.current_value)
         self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
 
-        self.slider.valueChanged.connect(self.handle_valueChanged)
+        self.slider.valueChanged.connect(self.on_drag_timer)
         self.slider.sliderPressed.connect(self.sliderPressed)
         self.slider.sliderMoved.connect(self.sliderMoved)
         self.slider.sliderReleased.connect(self.sliderReleased)
@@ -50,6 +50,9 @@ class QLabeledSlider(QtWidgets.QWidget):
 
         self.play_timer = QtCore.QTimer(interval=10)
         self.play_timer.timeout.connect(self.on_play_timer)
+
+        self.drag_timer = QtCore.QTimer(interval=10)
+        self.drag_timer.timeout.connect(self.on_drag_timer)
 
     def _start_play_timer(self, playing):
         if playing:
@@ -62,12 +65,12 @@ class QLabeledSlider(QtWidgets.QWidget):
         value = value % self.maximum()
         self.setValue(value)
 
-    def handle_valueChanged(self, value):
-        self.current_value.setText(f"{str(value)}/{str(self.slider.maximum())}")
-        if self.name == "":
-            self.valueChanged[int].emit(value)
-        else:
-            self.valueChanged[int,str].emit(value, self.name)
+    # def handle_valueChanged(self, value):
+    #     self.current_value.setText(f"{str(value)}/{str(self.slider.maximum())}")
+    #     if self.name == "":
+    #         self.valueChanged[int].emit(value)
+    #     else:
+    #         self.valueChanged[int,str].emit(value, self.name)
 
     def setMaximum(self, maximum: int):
         self.current_value.setText(f"{str(self.value())}/{str(maximum)}")
@@ -89,6 +92,17 @@ class QLabeledSlider(QtWidgets.QWidget):
             self.play_btn.setText("■")
             self.play_timer.start()
         self.playing = not self.playing
+
+    def on_slider_press(self):
+        self.slider.valueChanged.disconnect(self.on_drag_timer)
+        self.drag_timer.start()
+
+    def on_slider_release(self):
+        self.drag_timer.stop()
+        self.slider.valueChanged.connect(self.on_drag_timer)
+
+    def on_drag_timer(self):
+        self.valueChanged[int, str].emit(self.value(), self.name)
 
 if __name__ == "__main__":
     import sys

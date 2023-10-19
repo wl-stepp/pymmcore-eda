@@ -14,13 +14,12 @@ sequence = MDASequence(
 mmcore = CMMCorePlus.instance()
 mmcore.loadSystemConfiguration()
 
-folder = Path("./data")
-for content in folder.glob("*"):
-    shutil.rmtree(content)
-    print(content, "cleared")
-
 def test_local(qtbot):
-    datastore = QLocalDataStore(shape=[512, 512, 2, 1, 10])
+    folder = Path("./data")
+    for content in folder.glob("*"):
+        shutil.rmtree(content)
+        print(content, "cleared")
+    datastore = QLocalDataStore(shape=[10, 1, 2, 512, 512])
     saver = Saver(mmcore, datastore=datastore)
     mmcore.run_mda(sequence)
     if qtbot:

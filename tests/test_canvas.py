@@ -7,10 +7,7 @@ from pymmcore_eda.local_datastore import QDataStore, QLocalDataStore
 from pymmcore_plus import CMMCorePlus
 import time
 from useq import MDASequence
-
-
-
-
+from qtpy import QtCore
 
 sequence = MDASequence(
     channels=[{"config": "DAPI", "exposure": 10}, {"config": "FITC", "exposure": 10}],
@@ -35,7 +32,7 @@ def test_remote(qtbot):
     p = multiprocessing.Process(target=run_acquisition, args=([queue, out_conn]))
     p.start()
     name = in_conn.recv()
-    datastore = QDataStore(receiver, name, shape=[512, 512, 10, 10, 10])
+    datastore = QDataStore(receiver, name, shape=[10, 10, 10, 512, 512])
     canvas = Canvas(receiver, datastore)
     if qtbot:
         with qtbot.waitSignal(receiver.listener.sequence_started, timeout=5000):
@@ -49,7 +46,7 @@ def test_remote(qtbot):
 
 
 def test_local(qtbot):
-    datastore = QLocalDataStore(shape=[512, 512, 10, 10, 20])
+    datastore = QLocalDataStore(shape=[20, 1, 2, 512, 512])
     canvas = Canvas(mmcore, datastore)
     canvas.show()
     qtbot.addWidget(canvas)
