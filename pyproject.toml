@@ -8,9 +8,10 @@ packages = [{include = "pymmcore_eda"}]
 
 [tool.poetry.dependencies]
 python = "^3.11"
-pymmcore-plus = { path = "../pymmcore-plus/", develop = true }
 pydantic = "^2.7.1"
 black = "^24.4.2"
+pymmcore-plus = "^0.9.5"
+py = "^1.11.0"
 
 [tool.poetry.group.test.dependencies]
 pytest = "^6.0.0"
