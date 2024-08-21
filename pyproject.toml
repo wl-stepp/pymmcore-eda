@@ -5,21 +5,3 @@ description = ""
 authors = ["Willi Stepp <willi.stepp@epfl.ch>"]
 readme = "README.md"
 packages = [{include = "pymmcore_eda"}]
-
-[tool.poetry.dependencies]
-python = "^3.11"
-pydantic = "^2.7.1"
-black = "^24.4.2"
-pymmcore-plus = "^0.9.5"
-py = "^1.11.0"
-
-[tool.poetry.group.test.dependencies]
-pytest = "^6.0.0"
-pytest-mock = "*"
-pytest-qt = "*"
-pyqt5 = "^5.15.9"
-qtpy = "^2.3.1"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
